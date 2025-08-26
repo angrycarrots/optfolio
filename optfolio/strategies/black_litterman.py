@@ -54,8 +54,20 @@ class BlackLittermanStrategy(OptimizationStrategy):
         covariance = self.calculate_covariance_matrix(processed_returns, 
                                                     method=kwargs.get('covariance_method', 'sample'))
         
+        # Ensure covariance matrix is positive definite and finite
+        covariance = covariance + np.eye(len(covariance)) * 1e-8
+        covariance = pd.DataFrame(covariance, index=covariance.index, columns=covariance.columns)
+        
+        # Ensure equilibrium returns are finite
+        equilibrium_returns = equilibrium_returns.replace([np.inf, -np.inf], 0.0)
+        equilibrium_returns = equilibrium_returns.fillna(0.0)
+        
         # Generate views
         views, confidence = self._generate_views(processed_returns, **kwargs)
+        
+        # Ensure views and confidence are finite
+        views = np.nan_to_num(views, nan=0.0, posinf=1.0, neginf=-1.0)
+        confidence = np.nan_to_num(confidence, nan=0.5, posinf=0.9, neginf=0.1)
         
         # Apply Black-Litterman model
         posterior_returns, posterior_covariance = self._black_litterman_model(
@@ -268,34 +280,109 @@ class BlackLittermanStrategy(OptimizationStrategy):
         # Prior covariance
         prior_covariance = self.tau * covariance
         
-        # Views uncertainty matrix
+        # Add small regularization to ensure positive definiteness
+        prior_covariance = prior_covariance + np.eye(n_assets) * 1e-8
+        
+        # Views uncertainty matrix - ensure no division by zero
+        confidence_levels = np.maximum(confidence_levels, 1e-6)  # Minimum confidence level
         omega = np.diag(1 / confidence_levels)
         
-        # Posterior covariance
-        # Σ_post = ((τΣ)^(-1) + P^T Ω^(-1) P)^(-1)
-        prior_inv = np.linalg.inv(prior_covariance)
-        omega_inv = np.linalg.inv(omega)
-        
-        posterior_covariance = np.linalg.inv(
-            prior_inv + views_matrix.T @ omega_inv @ views_matrix
-        )
-        
-        # Posterior returns
-        # μ_post = Σ_post * ((τΣ)^(-1) * π + P^T * Ω^(-1) * Q)
-        # For simplicity, we'll use equilibrium returns as views
-        view_returns = equilibrium_returns.values  # In practice, these would be actual views
-        
-        # Ensure view_returns has the right shape for matrix multiplication
-        if len(view_returns) != n_views:
-            # If view_returns doesn't match n_views, use equilibrium returns for each view
-            view_returns = np.array([equilibrium_returns.values.mean()] * n_views)
-        
-        posterior_returns = posterior_covariance @ (
-            prior_inv @ equilibrium_returns.values + 
-            views_matrix.T @ omega_inv @ view_returns
-        )
-        
-        return pd.Series(posterior_returns, index=equilibrium_returns.index), pd.DataFrame(posterior_covariance)
+        try:
+            # Posterior covariance
+            # Σ_post = ((τΣ)^(-1) + P^T Ω^(-1) P)^(-1)
+            
+            # Use more robust matrix inversion with condition number checking
+            def safe_inv(matrix, name="matrix"):
+                """Safely invert a matrix with condition number checking."""
+                try:
+                    # Check condition number
+                    cond = np.linalg.cond(matrix)
+                    if cond > 1e12:  # Very ill-conditioned
+                        print(f"Warning: {name} is ill-conditioned (condition number: {cond:.2e})")
+                        # Add more regularization
+                        matrix = matrix + np.eye(matrix.shape[0]) * 1e-6
+                    
+                    return np.linalg.inv(matrix)
+                except np.linalg.LinAlgError:
+                    print(f"Warning: Could not invert {name}, using regularization")
+                    # Add regularization and try again
+                    matrix = matrix + np.eye(matrix.shape[0]) * 1e-6
+                    return np.linalg.inv(matrix)
+            
+            # Suppress numpy warnings for this section
+            import warnings
+            with warnings.catch_warnings():
+                warnings.filterwarnings('ignore', category=RuntimeWarning)
+                
+                prior_inv = safe_inv(prior_covariance, "prior covariance")
+                omega_inv = safe_inv(omega, "omega")
+                
+                # Add regularization to ensure numerical stability
+                regularization = np.eye(prior_inv.shape[0]) * 1e-8
+                prior_inv = prior_inv + regularization
+                
+                # Compute the matrix to be inverted with error handling
+                try:
+                    matrix_to_invert = prior_inv + views_matrix.T @ omega_inv @ views_matrix
+                except (ValueError, RuntimeError) as e:
+                    print(f"Warning: Matrix multiplication failed: {e}")
+                    # Fallback: use only prior information
+                    matrix_to_invert = prior_inv
+                
+                # Add regularization to ensure invertibility
+                matrix_to_invert = matrix_to_invert + np.eye(matrix_to_invert.shape[0]) * 1e-8
+                
+                posterior_covariance = safe_inv(matrix_to_invert, "posterior matrix")
+            
+            # Posterior returns
+            # μ_post = Σ_post * ((τΣ)^(-1) * π + P^T * Ω^(-1) * Q)
+            # For simplicity, we'll use equilibrium returns as views
+            view_returns = equilibrium_returns.values  # In practice, these would be actual views
+            
+            # Ensure view_returns has the right shape for matrix multiplication
+            if len(view_returns) != n_views:
+                # If view_returns doesn't match n_views, use equilibrium returns for each view
+                view_returns = np.array([equilibrium_returns.values.mean()] * n_views)
+            
+            # Ensure view_returns is finite
+            view_returns = np.nan_to_num(view_returns, nan=0.0, posinf=0.0, neginf=0.0)
+            
+            # Compute posterior returns with error handling
+            with warnings.catch_warnings():
+                warnings.filterwarnings('ignore', category=RuntimeWarning)
+                
+                try:
+                    term1 = prior_inv @ equilibrium_returns.values
+                except (ValueError, RuntimeError) as e:
+                    print(f"Warning: Term1 calculation failed: {e}")
+                    term1 = np.zeros(len(equilibrium_returns))
+                
+                try:
+                    term2 = views_matrix.T @ omega_inv @ view_returns
+                except (ValueError, RuntimeError) as e:
+                    print(f"Warning: Term2 calculation failed: {e}")
+                    term2 = np.zeros(len(equilibrium_returns))
+                
+                # Ensure terms are finite
+                term1 = np.nan_to_num(term1, nan=0.0, posinf=0.0, neginf=0.0)
+                term2 = np.nan_to_num(term2, nan=0.0, posinf=0.0, neginf=0.0)
+                
+                try:
+                    posterior_returns = posterior_covariance @ (term1 + term2)
+                except (ValueError, RuntimeError) as e:
+                    print(f"Warning: Posterior returns calculation failed: {e}")
+                    # Fallback to equilibrium returns
+                    posterior_returns = equilibrium_returns.values
+                
+                # Ensure posterior returns are finite
+                posterior_returns = np.nan_to_num(posterior_returns, nan=0.0, posinf=0.0, neginf=0.0)
+            
+            return pd.Series(posterior_returns, index=equilibrium_returns.index), pd.DataFrame(posterior_covariance)
+            
+        except (np.linalg.LinAlgError, ValueError, RuntimeError) as e:
+            # Fallback to equilibrium returns and original covariance
+            print(f"Warning: Black-Litterman optimization failed, using equilibrium returns. Error: {e}")
+            return equilibrium_returns, covariance
     
     def _optimize_with_posterior(self, posterior_returns: pd.Series,
                                posterior_covariance: pd.DataFrame,
@@ -322,17 +409,30 @@ class BlackLittermanStrategy(OptimizationStrategy):
             """Maximize Sharpe ratio."""
             weights = np.array(weights)
             
+            # Ensure weights are finite
+            weights = np.nan_to_num(weights, nan=0.0, posinf=1.0, neginf=0.0)
+            
             # Portfolio return
             portfolio_return = np.sum(weights * posterior_returns)
             
             # Portfolio volatility
-            portfolio_volatility = np.sqrt(np.dot(weights.T, np.dot(posterior_covariance, weights)))
+            try:
+                portfolio_volatility = np.sqrt(np.dot(weights.T, np.dot(posterior_covariance, weights)))
+                # Ensure volatility is finite and positive
+                portfolio_volatility = max(portfolio_volatility, 1e-8)
+            except (ValueError, RuntimeError):
+                portfolio_volatility = 1e-8
             
             # Sharpe ratio
-            if portfolio_volatility > 0:
-                return -(portfolio_return - rf_daily) / portfolio_volatility
+            if portfolio_volatility > 1e-8:
+                sharpe = (portfolio_return - rf_daily) / portfolio_volatility
+                # Ensure Sharpe ratio is finite
+                if np.isfinite(sharpe):
+                    return -sharpe
+                else:
+                    return -1e6  # Large negative value for invalid Sharpe
             else:
-                return -np.inf
+                return -1e6  # Large negative value for zero volatility
         
         # Constraints: weights sum to 1
         constraints = ({'type': 'eq', 'fun': lambda x: np.sum(x) - 1})

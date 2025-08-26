@@ -91,7 +91,8 @@ def run_portfolio_analysis():
     print("=" * 60)
     
     # Step 1: Create sample data
-    data_dir = create_sample_data()
+    # data_dir = create_sample_data()
+    data_dir = "price"
     
     # Step 2: Load and validate data
     print("\n1. Loading and validating data...")
@@ -286,11 +287,16 @@ def run_portfolio_analysis():
     else:
         print(f"\nNo successful backtests completed. Check the error messages above.")
     
-    # Clean up temporary data
+    # Clean up temporary data (only if it's a temporary directory)
     import shutil
-    shutil.rmtree(data_dir.parent)
-    
-    print(f"\nTemporary data cleaned up")
+    if isinstance(data_dir, Path) and data_dir.parent.exists():
+        try:
+            shutil.rmtree(data_dir.parent)
+            print(f"\nTemporary data cleaned up")
+        except Exception as e:
+            print(f"\nWarning: Could not clean up temporary data: {e}")
+    else:
+        print(f"\nUsing existing data directory: {data_dir}")
     print(f"\nGenerated files:")
     print(f"  - strategy_comparison.csv")
     print(f"  - detailed_results.json")

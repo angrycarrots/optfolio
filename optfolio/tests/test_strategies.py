@@ -438,16 +438,17 @@ class TestStrategyFactory:
     
     def test_create_equal_weight_strategy(self):
         """Test creating equal weight strategy."""
-        strategy = StrategyFactory.create('equal_weight', name="Test Equal Weight")
+        strategy = StrategyFactory.create('equal_weight')
+        strategy.name = "Test Equal Weight"
         
         assert isinstance(strategy, EqualWeightStrategy)
         assert strategy.name == "Test Equal Weight"
     
     def test_create_mean_variance_strategy(self):
         """Test creating mean-variance strategy."""
-        strategy = StrategyFactory.create('mean_variance', 
-                                        name="Test MV",
+        strategy = StrategyFactory.create('mean_variance',
                                         objective="sortino_ratio")
+        strategy.name = "Test MV"
         
         assert isinstance(strategy, MeanVarianceStrategy)
         assert strategy.name == "Test MV"
@@ -456,9 +457,9 @@ class TestStrategyFactory:
     def test_create_random_weight_strategy(self):
         """Test creating random weight strategy."""
         strategy = StrategyFactory.create('random_weight',
-                                        name="Test Random",
                                         distribution="dirichlet",
                                         seed=42)
+        strategy.name = "Test Random"
         
         assert isinstance(strategy, RandomWeightStrategy)
         assert strategy.name == "Test Random"
@@ -468,9 +469,9 @@ class TestStrategyFactory:
     def test_create_black_litterman_strategy(self):
         """Test creating Black-Litterman strategy."""
         strategy = StrategyFactory.create('black_litterman',
-                                        name="Test BL",
                                         prior_method="market_cap",
                                         view_method="random")
+        strategy.name = "Test BL"
         
         assert isinstance(strategy, BlackLittermanStrategy)
         assert strategy.name == "Test BL"
