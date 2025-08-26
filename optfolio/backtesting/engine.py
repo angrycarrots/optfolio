@@ -290,6 +290,7 @@ class Backtester:
             'transaction_history': portfolio.transaction_history,
             'summary': portfolio.get_summary(),
             'rebalance_dates': rebalance_dates,
+            'last_weights': self.renormalize_last_weights(portfolio),
             'backtest_params': {
                 'initial_capital': self.initial_capital,
                 'risk_free_rate': self.risk_free_rate,
@@ -301,6 +302,57 @@ class Backtester:
         }
         
         return results
+    
+    def renormalize_last_weights(self, portfolio: Portfolio) -> Dict[str, float]:
+        """Get the most recent set of weights with minimum weight of 0.01 and renormalized.
+        
+        Args:
+            portfolio: Portfolio instance containing weight history
+            
+        Returns:
+            Dictionary of renormalized weights with minimum weight of 0.01
+        """
+        # Get the most recent weights from weight history
+        if not portfolio.weight_history:
+            return {}
+        
+        # Get the last weight allocation
+        last_weights = portfolio.weight_history[-1].copy()
+        
+        if not last_weights:
+            return {}
+        
+        # Apply minimum weight constraint of 0.01
+        normalized_weights = {}
+        for ticker, weight in last_weights.items():
+            normalized_weights[ticker] = max(weight, 0.01)
+        
+        # Renormalize to sum to 1.0
+        total_weight = sum(normalized_weights.values())
+        if total_weight > 0:
+            for ticker in normalized_weights:
+                normalized_weights[ticker] /= total_weight
+        
+        # Verify minimum weight constraint is satisfied after renormalization
+        # If not, we need to iteratively adjust
+        min_weight = min(normalized_weights.values())
+        if min_weight < 0.01:
+            # Iteratively adjust weights to ensure minimum constraint
+            while min_weight < 0.01:
+                # Find weights below minimum and set them to minimum
+                for ticker in normalized_weights:
+                    if normalized_weights[ticker] < 0.01:
+                        normalized_weights[ticker] = 0.01
+                
+                # Renormalize again
+                total_weight = sum(normalized_weights.values())
+                if total_weight > 0:
+                    for ticker in normalized_weights:
+                        normalized_weights[ticker] /= total_weight
+                
+                min_weight = min(normalized_weights.values())
+        
+        return normalized_weights
     
     def compare_strategies(self, strategy_names: Optional[List[str]] = None) -> pd.DataFrame:
         """Compare performance of different strategies.
