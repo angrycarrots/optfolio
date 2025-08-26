@@ -257,8 +257,27 @@ class Backtester:
         # Calculate all metrics
         performance_metrics = metrics.calculate_all_metrics(portfolio_series)
         
-        # Calculate rolling metrics
-        rolling_metrics = metrics.calculate_rolling_metrics(portfolio_series)
+        # Calculate rolling metrics only at rebalance dates
+        # Use smaller window if we have limited data points
+        data_length = len(portfolio_series)
+        if data_length < 252:
+            window_size = max(10, data_length // 4)  # Use 1/4 of data length, minimum 10
+        else:
+            window_size = 252
+        
+        # Calculate rolling metrics for the full series first
+        full_rolling_metrics = metrics.calculate_rolling_metrics(portfolio_series, window=window_size)
+        
+        # Filter to only include rebalance dates
+        if not full_rolling_metrics.empty and rebalance_dates:
+            # Convert rebalance_dates to datetime if they're strings
+            rebalance_dates_dt = [pd.to_datetime(date) if isinstance(date, str) else date for date in rebalance_dates]
+            
+            # Filter rolling metrics to only include rebalance dates
+            available_dates = [date for date in rebalance_dates_dt if date in full_rolling_metrics.index]
+            rolling_metrics = full_rolling_metrics.loc[available_dates]
+        else:
+            rolling_metrics = full_rolling_metrics
         
         # Compile results
         results = {

@@ -94,7 +94,7 @@ class TestDataLoader:
         """Test loading with non-existent directory."""
         loader = DataLoader("non_existent_dir")
         
-        with pytest.raises(FileNotFoundError):
+        with pytest.raises(ValueError, match="No CSV files found"):
             loader.load_prices()
     
     def test_get_returns_log(self):

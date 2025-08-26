@@ -269,9 +269,21 @@ class PortfolioMetrics:
         """
         returns = self.calculate_returns(portfolio_values)
         
+        # Calculate time period in years
+        total_days = (portfolio_values.index[-1] - portfolio_values.index[0]).days
+        years = total_days / 365.25
+        
+        total_return = self.calculate_cumulative_returns(portfolio_values).iloc[-1]
+        
+        # Calculate annualized return using compound annual growth rate (CAGR)
+        if years > 0 and total_return > -1:  # Avoid division by zero and negative total return
+            annualized_return = (1 + total_return) ** (1 / years) - 1
+        else:
+            annualized_return = 0.0
+        
         metrics = {
-            'total_return': self.calculate_cumulative_returns(portfolio_values).iloc[-1],
-            'annualized_return': returns.mean() * periods_per_year,
+            'total_return': total_return,
+            'annualized_return': annualized_return,
             'volatility': self.calculate_volatility(returns, periods_per_year),
             'sharpe_ratio': self.calculate_sharpe_ratio(returns, periods_per_year),
             'sortino_ratio': self.calculate_sortino_ratio(returns, periods_per_year),
@@ -305,28 +317,42 @@ class PortfolioMetrics:
         Returns:
             DataFrame with rolling metrics
         """
+        # Validate inputs
+        if len(portfolio_values) < 2:
+            return pd.DataFrame()
+        
+        # Adjust window size if it's too large for the data
+        if window > len(portfolio_values):
+            window = max(2, len(portfolio_values) // 2)
+        
         returns = self.calculate_returns(portfolio_values)
         
         rolling_metrics = pd.DataFrame(index=returns.index)
         
         # Rolling returns
-        rolling_metrics['rolling_return'] = returns.rolling(window).mean() * periods_per_year
+        rolling_metrics['rolling_return'] = returns.rolling(window, min_periods=1).mean() * periods_per_year
         
         # Rolling volatility
-        rolling_metrics['rolling_volatility'] = returns.rolling(window).std() * np.sqrt(periods_per_year)
+        rolling_metrics['rolling_volatility'] = returns.rolling(window, min_periods=2).std() * np.sqrt(periods_per_year)
         
         # Rolling Sharpe ratio
         excess_returns = returns - (self.risk_free_rate / periods_per_year)
-        rolling_metrics['rolling_sharpe'] = (
-            excess_returns.rolling(window).mean() / 
-            returns.rolling(window).std()
-        ) * np.sqrt(periods_per_year)
+        rolling_vol = returns.rolling(window, min_periods=2).std()
+        rolling_mean = excess_returns.rolling(window, min_periods=1).mean()
+        
+        # Calculate Sharpe ratio only where volatility is not zero
+        rolling_metrics['rolling_sharpe'] = np.where(
+            rolling_vol > 0,
+            (rolling_mean / rolling_vol) * np.sqrt(periods_per_year),
+            np.nan
+        )
         
         # Rolling drawdown
-        rolling_metrics['rolling_drawdown'] = self.calculate_drawdown(portfolio_values).rolling(window).min()
+        drawdown = self.calculate_drawdown(portfolio_values)
+        rolling_metrics['rolling_drawdown'] = drawdown.rolling(window, min_periods=1).min()
         
         # Rolling beta (if market returns provided)
-        if market_returns is not None:
+        if market_returns is not None and len(market_returns) >= window:
             rolling_beta = []
             for i in range(window, len(returns)):
                 window_returns = returns.iloc[i-window:i]
