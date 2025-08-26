@@ -310,7 +310,8 @@ class Backtester:
             portfolio: Portfolio instance containing weight history
             
         Returns:
-            Dictionary of renormalized weights with minimum weight of 0.01
+            Dictionary of renormalized weights with minimum weight of 0.01, 
+            rounded to nearest 0.01 and sorted by weight in descending order
         """
         # Get the most recent weights from weight history
         if not portfolio.weight_history:
@@ -352,7 +353,44 @@ class Backtester:
                 
                 min_weight = min(normalized_weights.values())
         
-        return normalized_weights
+        # Round all weights to the nearest 0.01
+        rounded_weights = {}
+        for ticker, weight in normalized_weights.items():
+            rounded_weights[ticker] = round(weight, 2)
+        
+        # Adjust rounding to ensure weights sum to 1.0 while maintaining minimum constraint
+        total_rounded = sum(rounded_weights.values())
+        if abs(total_rounded - 1.0) > 1e-6:
+            # Sort weights by value to find the best candidates for adjustment
+            sorted_items = sorted(rounded_weights.items(), key=lambda x: x[1], reverse=True)
+            
+            if total_rounded > 1.0:
+                # Need to reduce weights - start from the largest
+                excess = total_rounded - 1.0
+                for ticker, weight in sorted_items:
+                    if excess <= 0:
+                        break
+                    reduction = min(excess, weight - 0.01)  # Don't go below minimum
+                    if reduction > 0:
+                        rounded_weights[ticker] = round(weight - reduction, 2)
+                        excess -= reduction
+            else:
+                # Need to increase weights - start from the largest
+                deficit = 1.0 - total_rounded
+                for ticker, weight in sorted_items:
+                    if deficit <= 0:
+                        break
+                    increase = min(deficit, 0.99 - weight)  # Don't go above 0.99
+                    if increase > 0:
+                        rounded_weights[ticker] = round(weight + increase, 2)
+                        deficit -= increase
+        
+        # Sort by weight in descending order
+        sorted_weights = dict(sorted(rounded_weights.items(), 
+                                   key=lambda x: x[1], 
+                                   reverse=True))
+        
+        return sorted_weights
     
     def compare_strategies(self, strategy_names: Optional[List[str]] = None) -> pd.DataFrame:
         """Compare performance of different strategies.
