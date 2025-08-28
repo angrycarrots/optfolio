@@ -5,6 +5,7 @@ import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
 import vectorbt as vbt
+from scipy import stats
 
 from ..portfolio.base import Portfolio
 from ..strategies.base import OptimizationStrategy, StrategyFactory
@@ -301,9 +302,13 @@ class Backtester:
             }
         }
         
+        # Calculate significance test after results are compiled
+        significance_results = self._calculate_significance(portfolio_series)
+        results['significance'] = significance_results
+        
         return results
     
-    def renormalize_last_weights(self, portfolio: Portfolio) -> Dict[str, float]:
+    def renormalize_last_weights(self, portfolio: Portfolio, min_weight: float = 0.01) -> Dict[str, float]:
         """Get the most recent set of weights with minimum weight of 0.01 and renormalized.
         
         Args:
@@ -326,7 +331,7 @@ class Backtester:
         # Apply minimum weight constraint of 0.01
         normalized_weights = {}
         for ticker, weight in last_weights.items():
-            normalized_weights[ticker] = max(weight, 0.01)
+            normalized_weights[ticker] = max(weight, min_weight)
         
         # Renormalize to sum to 1.0
         total_weight = sum(normalized_weights.values())
@@ -337,13 +342,13 @@ class Backtester:
         # Verify minimum weight constraint is satisfied after renormalization
         # If not, we need to iteratively adjust
         min_weight = min(normalized_weights.values())
-        if min_weight < 0.01:
+        if min_weight < min_weight:
             # Iteratively adjust weights to ensure minimum constraint
-            while min_weight < 0.01:
+            while min_weight < min_weight:
                 # Find weights below minimum and set them to minimum
                 for ticker in normalized_weights:
-                    if normalized_weights[ticker] < 0.01:
-                        normalized_weights[ticker] = 0.01
+                    if normalized_weights[ticker] < min_weight:
+                        normalized_weights[ticker] = min_weight
                 
                 # Renormalize again
                 total_weight = sum(normalized_weights.values())
@@ -370,7 +375,7 @@ class Backtester:
                 for ticker, weight in sorted_items:
                     if excess <= 0:
                         break
-                    reduction = min(excess, weight - 0.01)  # Don't go below minimum
+                    reduction = min(excess, weight - min_weight)  # Don't go below minimum
                     if reduction > 0:
                         rounded_weights[ticker] = round(weight - reduction, 2)
                         excess -= reduction
@@ -380,7 +385,7 @@ class Backtester:
                 for ticker, weight in sorted_items:
                     if deficit <= 0:
                         break
-                    increase = min(deficit, 0.99 - weight)  # Don't go above 0.99
+                    increase = min(deficit, 1.0 - weight)  # Don't go above 0.99
                     if increase > 0:
                         rounded_weights[ticker] = round(weight + increase, 2)
                         deficit -= increase
@@ -391,6 +396,64 @@ class Backtester:
                                    reverse=True))
         
         return sorted_weights
+    
+    def _calculate_significance(self, portfolio_series: pd.Series, benchmark_returns: Optional[pd.Series] = None) -> Dict[str, float]:
+        """Calculate significance test for portfolio returns.
+        
+        Args:
+            portfolio_series: Portfolio value series
+            benchmark_returns: Optional benchmark returns for relative performance test
+            
+        Returns:
+            Dictionary containing t-statistic and p-value
+        """
+        # Calculate portfolio returns
+        portfolio_returns = portfolio_series.pct_change().dropna()
+        
+        if len(portfolio_returns) < 2:
+            return {'t_statistic': np.nan, 'p_value': np.nan}
+        
+        if benchmark_returns is not None:
+            # Test if strategy outperforms benchmark
+            # Align dates
+            aligned_returns = pd.concat([portfolio_returns, benchmark_returns], axis=1).dropna()
+            if len(aligned_returns) < 2:
+                return {'t_statistic': np.nan, 'p_value': np.nan}
+            
+            strategy_returns = aligned_returns.iloc[:, 0]
+            benchmark_returns_aligned = aligned_returns.iloc[:, 1]
+            
+            # Calculate excess returns
+            excess_returns = strategy_returns - benchmark_returns_aligned
+            
+            # One-sided t-test: H0: mean <= 0, H1: mean > 0
+            t_statistic, p_value = stats.ttest_1samp(excess_returns, 0, alternative='greater')
+        else:
+            # Test if strategy returns are significantly greater than zero
+            # One-sided t-test: H0: mean <= 0, H1: mean > 0
+            t_statistic, p_value = stats.ttest_1samp(portfolio_returns, 0, alternative='greater')
+        
+        return {
+            't_statistic': t_statistic,
+            'p_value': p_value
+        }
+    
+    def significance(self, strategy_name: str, benchmark_returns: Optional[pd.Series] = None) -> Dict[str, float]:
+        """Perform a one-sided t-test to test if strategy returns are significantly greater than zero.
+        
+        Args:
+            strategy_name: Name of the strategy to test
+            benchmark_returns: Optional benchmark returns for relative performance test
+            
+        Returns:
+            Dictionary containing t-statistic and p-value
+        """
+        if strategy_name not in self.results:
+            raise ValueError(f"Strategy '{strategy_name}' not found in results")
+        
+        # Get portfolio values and calculate significance
+        portfolio_series = self.results[strategy_name]['portfolio_values']
+        return self._calculate_significance(portfolio_series, benchmark_returns)
     
     def compare_strategies(self, strategy_names: Optional[List[str]] = None) -> pd.DataFrame:
         """Compare performance of different strategies.
@@ -413,6 +476,9 @@ class Backtester:
             results = self.results[strategy_name]
             metrics = results['performance_metrics']
             
+            # Get significance test results
+            significance = results.get('significance', {})
+            
             comparison_data.append({
                 'Strategy': strategy_name,
                 'Total Return (%)': metrics.get('total_return', 0) * 100,
@@ -423,7 +489,9 @@ class Backtester:
                 'Max Drawdown (%)': metrics.get('max_drawdown', 0) * 100,
                 'Calmar Ratio': metrics.get('calmar_ratio', 0),
                 'VaR (5%)': metrics.get('var_5pct', 0),
-                'CVaR (5%)': metrics.get('cvar_5pct', 0)
+                'CVaR (5%)': metrics.get('cvar_5pct', 0),
+                'T-Statistic': significance.get('t_statistic', np.nan),
+                'P-Value': significance.get('p_value', np.nan)
             })
         
         return pd.DataFrame(comparison_data)
