@@ -455,6 +455,24 @@ class Backtester:
         portfolio_series = self.results[strategy_name]['portfolio_values']
         return self._calculate_significance(portfolio_series, benchmark_returns)
     
+    def get_portfolio_returns(self, strategy_name: str) -> pd.Series:
+        """Get portfolio returns for a specific strategy.
+        
+        Args:
+            strategy_name: Name of the strategy
+            
+        Returns:
+            Series containing portfolio returns (percentage change)
+        """
+        if strategy_name not in self.results:
+            raise ValueError(f"Strategy '{strategy_name}' not found in results")
+        
+        # Get portfolio values and calculate returns
+        portfolio_series = self.results[strategy_name]['portfolio_values']
+        portfolio_returns = portfolio_series.pct_change().dropna()
+        
+        return portfolio_returns
+    
     def compare_strategies(self, strategy_names: Optional[List[str]] = None) -> pd.DataFrame:
         """Compare performance of different strategies.
         
