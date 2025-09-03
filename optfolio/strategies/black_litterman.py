@@ -5,6 +5,7 @@ import pandas as pd
 import numpy as np
 
 from .base import OptimizationStrategy, StrategyFactory
+from .upside import UpsideCalculator
 
 
 class BlackLittermanStrategy(OptimizationStrategy):
@@ -23,7 +24,7 @@ class BlackLittermanStrategy(OptimizationStrategy):
             tau: Prior uncertainty parameter
             risk_aversion: Risk aversion parameter
             prior_method: Method for generating priors ("market_cap", "equal", "random")
-            view_method: Method for generating views ("random", "momentum", "mean_reversion")
+            view_method: Method for generating views ("random", "momentum", "mean_reversion", "upside")
             **kwargs: Additional parameters
         """
         super().__init__(name, **kwargs)
@@ -145,6 +146,8 @@ class BlackLittermanStrategy(OptimizationStrategy):
             return self._generate_momentum_views(returns, **kwargs)
         elif self.view_method == "mean_reversion":
             return self._generate_mean_reversion_views(returns, **kwargs)
+        elif self.view_method == "upside":
+            return self._generate_upside_views(returns, **kwargs)
         else:
             raise ValueError(f"Unknown view method: {self.view_method}")
     
@@ -258,6 +261,77 @@ class BlackLittermanStrategy(OptimizationStrategy):
                 confidence_levels[i] = 0.5
         
         return views_matrix, confidence_levels
+    
+    def _generate_upside_views(self, returns: pd.DataFrame, 
+                              symbols: List[str] = None,
+                              **kwargs) -> Tuple[np.ndarray, np.ndarray]:
+        """Generate views based on analyst price target upside.
+        
+        Args:
+            returns: Returns DataFrame
+            symbols: List of symbols to generate views for (default: all)
+            **kwargs: Additional parameters
+            
+        Returns:
+            Tuple of (views matrix, confidence levels)
+        """
+        if symbols is None:
+            symbols = list(returns.columns)
+        
+        # Initialize UpsideCalculator
+        uc = UpsideCalculator()
+        
+        n_assets = len(returns.columns)
+        n_views = len(symbols)  # One view per symbol
+        
+        views_matrix = np.zeros((n_views, n_assets))
+        confidence_levels = np.zeros(n_views)
+        
+        successful_views = 0
+        
+        for i, symbol in enumerate(symbols):
+            try:
+                # Get upside data for this symbol
+                upside_data = uc.upside(symbol)
+                
+                if not upside_data.empty:
+                    # Get the most recent upside
+                    latest_upside = upside_data.iloc[-1]['upside']
+                    
+                    # Find the column index for this symbol
+                    if symbol in returns.columns:
+                        col_idx = returns.columns.get_loc(symbol)
+                        
+                        # Set the view: positive if upside > 0, negative if < 0
+                        views_matrix[i, col_idx] = 1.0 if latest_upside > 0 else -1.0
+                        
+                        # Set confidence based on upside magnitude (higher upside = higher confidence)
+                        confidence_levels[i] = min(0.9, max(0.1, abs(latest_upside)))
+                        successful_views += 1
+                    else:
+                        # Symbol not in returns, skip this view
+                        views_matrix[i, :] = 0
+                        confidence_levels[i] = 0.1
+                else:
+                    # No upside data, set low confidence
+                    views_matrix[i, :] = 0
+                    confidence_levels[i] = 0.1
+                    
+            except Exception as e:
+                print(f"Warning: Could not generate upside view for {symbol}: {e}")
+                views_matrix[i, :] = 0
+                confidence_levels[i] = 0.1
+        
+        # If no upside views could be generated, fall back to momentum views
+        if successful_views == 0:
+            print("Warning: No upside views could be generated. Falling back to momentum views.")
+            return self._generate_momentum_views(returns, **kwargs)
+        
+        print(f"Successfully generated {successful_views} upside views out of {len(symbols)} symbols")
+        
+        return views_matrix, confidence_levels
+    
+    
     
     def _black_litterman_model(self, equilibrium_returns: pd.Series,
                              covariance: pd.DataFrame,
@@ -393,9 +467,11 @@ class BlackLittermanStrategy(OptimizationStrategy):
             posterior_returns: Posterior expected returns
             posterior_covariance: Posterior covariance matrix
             **kwargs: Additional parameters
+                - min_weight: Minimum weight per asset (default: 0.01)
+                - risk_free_rate: Risk-free rate for Sharpe ratio calculation
             
         Returns:
-            Dictionary of optimal weights
+            Dictionary of optimal weights with minimum weight constraint enforced
         """
         from scipy.optimize import minimize
         
@@ -437,11 +513,14 @@ class BlackLittermanStrategy(OptimizationStrategy):
         # Constraints: weights sum to 1
         constraints = ({'type': 'eq', 'fun': lambda x: np.sum(x) - 1})
         
-        # Bounds: weights between 0 and 1
-        bounds = [(0, 1) for _ in range(n_assets)]
+        # Bounds: weights between 0.01 and 1 (minimum 1% allocation)
+        min_weight = kwargs.get('min_weight', 0.01)
+        bounds = [(min_weight, 1) for _ in range(n_assets)]
         
-        # Initial guess: equal weights
-        initial_weights = np.array([1.0/n_assets] * n_assets)
+        # Initial guess: equal weights (ensuring minimum weight constraint)
+        initial_weights = np.array([max(1.0/n_assets, min_weight) for _ in range(n_assets)])
+        # Normalize to sum to 1
+        initial_weights = initial_weights / np.sum(initial_weights)
         
         # Optimize
         result = minimize(objective, initial_weights, 
@@ -450,8 +529,66 @@ class BlackLittermanStrategy(OptimizationStrategy):
         if result.success:
             weights = dict(zip(tickers, result.x))
         else:
-            # Fallback to equal weights
-            weights = {ticker: 1.0/n_assets for ticker in tickers}
+            # Fallback to equal weights with minimum constraint
+            weights = {ticker: max(1.0/n_assets, min_weight) for ticker in tickers}
+            # Normalize to sum to 1
+            total_weight = sum(weights.values())
+            weights = {ticker: weight / total_weight for ticker, weight in weights.items()}
+        
+        # Post-process to ensure minimum weight constraint is met
+        weights = self._enforce_minimum_weights(weights, min_weight)
+        
+        return weights
+    
+    def _enforce_minimum_weights(self, weights: Dict[str, float], min_weight: float = 0.01) -> Dict[str, float]:
+        """Enforce minimum weight constraint and renormalize weights.
+        
+        Args:
+            weights: Dictionary of asset weights
+            min_weight: Minimum weight per asset (default: 0.01)
+            
+        Returns:
+            Dictionary of adjusted weights that meet minimum constraint
+        """
+        weights = weights.copy()
+        
+        # First pass: ensure all weights meet minimum
+        for ticker in weights:
+            if weights[ticker] < min_weight:
+                weights[ticker] = min_weight
+        
+        # Calculate total weight
+        total_weight = sum(weights.values())
+        
+        # If total exceeds 1, we need to reduce some weights
+        if total_weight > 1.0:
+            # Calculate excess weight
+            excess = total_weight - 1.0
+            
+            # Find weights that can be reduced (those above minimum)
+            reducible_weights = {ticker: weight for ticker, weight in weights.items() 
+                               if weight > min_weight}
+            
+            if reducible_weights:
+                # Sort by weight (reduce largest weights first)
+                sorted_reducible = sorted(reducible_weights.items(), key=lambda x: x[1], reverse=True)
+                
+                # Reduce weights proportionally to their excess above minimum
+                for ticker, weight in sorted_reducible:
+                    if excess <= 0:
+                        break
+                    
+                    # Calculate how much we can reduce this weight
+                    reducible_amount = weight - min_weight
+                    reduction = min(excess, reducible_amount)
+                    
+                    weights[ticker] -= reduction
+                    excess -= reduction
+        
+        # Final normalization to ensure weights sum to 1
+        total_weight = sum(weights.values())
+        if total_weight != 1.0:
+            weights = {ticker: weight / total_weight for ticker, weight in weights.items()}
         
         return weights
     

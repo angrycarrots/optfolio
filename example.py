@@ -8,6 +8,7 @@ This script shows how to:
 3. Run backtests
 4. Compare strategy performance
 5. Generate reports and visualizations
+6. Compare Black-Litterman strategies with different view methods (momentum vs upside)
 """
 
 import pandas as pd
@@ -127,13 +128,21 @@ def run_portfolio_analysis():
         StrategyFactory.create('mean_variance', objective="sharpe_ratio"),
         StrategyFactory.create('random_weight', distribution="dirichlet", seed=42),
         StrategyFactory.create('black_litterman', 
-                             prior_method="market_cap", view_method="momentum")
+                             prior_method="market_cap", view_method="momentum"),
+        StrategyFactory.create('black_litterman', 
+                             prior_method="market_cap", view_method="upside")
     ]
     
-    strategy_names = ["Equal Weight", "Mean-Variance (Sortino)", "Mean-Variance (Sharpe)", "Random Weight", "Black-Litterman"]
+    strategy_names = ["Equal Weight", "Mean-Variance (Sortino)", "Mean-Variance (Sharpe)", "Random Weight", "Black-Litterman (Momentum)", "Black-Litterman (Upside)"]
     for i, strategy in enumerate(strategies):
         strategy.name = strategy_names[i]
-        print(f"   Created: {strategy}")
+        
+        # Set minimum weight constraint for Black-Litterman strategies
+        if 'black_litterman' in strategy.name.lower():
+            strategy.min_weight = 0.01  # 1% minimum allocation
+            print(f"   Created: {strategy} (min weight: 1%)")
+        else:
+            print(f"   Created: {strategy}")
     
     # Step 4: Set up backtesting
     print("\n3. Setting up backtesting...")
@@ -174,6 +183,9 @@ def run_portfolio_analysis():
     # Step 7: Generate detailed analysis
     print("\n6. Detailed strategy analysis...")
     
+    # Track Black-Litterman strategies for comparison
+    bl_strategies = {}
+    
     for strategy_name, result in results.items():
         metrics = result['performance_metrics']
         summary = result['summary']
@@ -187,6 +199,34 @@ def run_portfolio_analysis():
         print(f"  Max Drawdown: {metrics.get('max_drawdown', 0):.2%}")
         print(f"  Number of Transactions: {summary.get('num_transactions', 0)}")
         print(f"  Total Transaction Costs: ${summary.get('total_transaction_costs', 0):.2f}")
+        
+        # Store Black-Litterman results for comparison
+        if 'Black-Litterman' in strategy_name:
+            bl_strategies[strategy_name] = result
+    
+    # Compare Black-Litterman strategies if we have both
+    if len(bl_strategies) >= 2:
+        print(f"\n" + "="*60)
+        print("BLACK-LITTERMAN STRATEGY COMPARISON")
+        print("="*60)
+        
+        for strategy_name, result in bl_strategies.items():
+            metrics = result['performance_metrics']
+            summary = result['summary']
+            
+            print(f"\n{strategy_name}:")
+            print(f"  Sharpe Ratio: {metrics.get('sharpe_ratio', 0):.3f}")
+            print(f"  Sortino Ratio: {metrics.get('sortino_ratio', 0):.3f}")
+            print(f"  Max Drawdown: {metrics.get('max_drawdown', 0):.2%}")
+            print(f"  Transaction Costs: ${summary.get('total_transaction_costs', 0):.2f}")
+            
+            # Show asset allocation if available
+            if 'last_weights' in result:
+                final_weights = result['last_weights']
+                top_assets = sorted(final_weights.items(), key=lambda x: x[1], reverse=True)[:5]
+                print(f"  Top 5 Assets:")
+                for asset, weight in top_assets:
+                    print(f"    {asset}: {weight:.1%}")
     
     # Step 8: Export results
     print("\n7. Exporting results...")
@@ -269,6 +309,95 @@ def run_portfolio_analysis():
         
         print("   Saved rolling metrics plot to 'rolling_metrics.png'")
         
+        # Additional plot: Compare Black-Litterman strategies
+        if len(bl_strategies) >= 2:
+            plt.figure(figsize=(15, 10))
+            
+            # Create subplots for different comparisons
+            fig, axes = plt.subplots(2, 2, figsize=(15, 10))
+            fig.suptitle('Black-Litterman Strategy Comparison', fontsize=16)
+            
+            # Plot 1: Portfolio values comparison
+            for strategy_name, result in bl_strategies.items():
+                if 'portfolio_values' in result and len(result['portfolio_values']) > 0:
+                    portfolio_series = result['portfolio_values']
+                    axes[0, 0].plot(portfolio_series.index, portfolio_series.values, 
+                                   label=strategy_name, linewidth=2)
+            
+            axes[0, 0].set_title('Portfolio Values Comparison')
+            axes[0, 0].set_xlabel('Date')
+            axes[0, 0].set_ylabel('Portfolio Value ($)')
+            axes[0, 0].legend()
+            axes[0, 0].grid(True, alpha=0.3)
+            
+            # Plot 2: Rolling Sharpe ratio comparison
+            for strategy_name, result in bl_strategies.items():
+                if 'rolling_metrics' in result and not result['rolling_metrics'].empty:
+                    rolling_metrics = result['rolling_metrics']
+                    if 'rolling_sharpe' in rolling_metrics.columns:
+                        axes[0, 1].plot(rolling_metrics.index, rolling_metrics['rolling_sharpe'], 
+                                       label=strategy_name, linewidth=2)
+            
+            axes[0, 1].set_title('Rolling Sharpe Ratio Comparison')
+            axes[0, 1].set_xlabel('Date')
+            axes[0, 1].set_ylabel('Sharpe Ratio')
+            axes[0, 1].legend()
+            axes[0, 1].grid(True, alpha=0.3)
+            
+            # Plot 3: Weight distribution comparison
+            for i, (strategy_name, result) in enumerate(bl_strategies.items()):
+                if 'last_weights' in result:
+                    final_weights = result['last_weights']
+                    assets = list(final_weights.keys())
+                    weights = list(final_weights.values())
+                    
+                    # Sort by weight and show top 10
+                    sorted_data = sorted(zip(assets, weights), key=lambda x: x[1], reverse=True)
+                    sorted_assets, sorted_weights = zip(*sorted_data)
+                    
+                    top_n = min(10, len(sorted_assets))
+                    x_pos = np.arange(top_n) + i * 0.4
+                    axes[1, 0].bar(x_pos, sorted_weights[:top_n], width=0.4, 
+                                   label=strategy_name, alpha=0.7)
+            
+            axes[1, 0].set_title('Top 10 Asset Weights Comparison')
+            axes[1, 0].set_xlabel('Asset Rank')
+            axes[1, 0].set_ylabel('Weight')
+            axes[1, 0].set_xticks(np.arange(10) + 0.2)
+            axes[1, 0].set_xticklabels([f'#{i+1}' for i in range(10)])
+            axes[1, 0].legend()
+            axes[1, 0].grid(True, alpha=0.3)
+            
+            # Plot 4: Performance metrics comparison
+            metrics_names = ['Sharpe Ratio', 'Sortino Ratio', 'Max Drawdown']
+            x_pos = np.arange(len(metrics_names))
+            width = 0.35
+            
+            for i, (strategy_name, result) in enumerate(bl_strategies.items()):
+                metrics = result['performance_metrics']
+                values = [
+                    metrics.get('sharpe_ratio', 0),
+                    metrics.get('sortino_ratio', 0),
+                    abs(metrics.get('max_drawdown', 0))  # Use absolute value for drawdown
+                ]
+                
+                x_offset = i * width
+                axes[1, 1].bar(x_pos + x_offset, values, width, label=strategy_name, alpha=0.7)
+            
+            axes[1, 1].set_title('Performance Metrics Comparison')
+            axes[1, 1].set_xlabel('Metric')
+            axes[1, 1].set_ylabel('Value')
+            axes[1, 1].set_xticks(x_pos + width/2)
+            axes[1, 1].set_xticklabels(metrics_names)
+            axes[1, 1].legend()
+            axes[1, 1].grid(True, alpha=0.3)
+            
+            plt.tight_layout()
+            plt.savefig('black_litterman_comparison.png', dpi=300, bbox_inches='tight')
+            print("   Saved Black-Litterman comparison plot to 'black_litterman_comparison.png'")
+            plt.show()
+            plt.close()
+        
     except ImportError:
         print("   Matplotlib not available, skipping visualizations")
     
@@ -302,6 +431,8 @@ def run_portfolio_analysis():
     print(f"  - detailed_results.json")
     print(f"  - portfolio_values.png")
     print(f"  - rolling_metrics.png")
+    if len(bl_strategies) >= 2:
+        print(f"  - black_litterman_comparison.png")
 
 
 if __name__ == "__main__":
