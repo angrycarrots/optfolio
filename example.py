@@ -215,23 +215,65 @@ def run_portfolio_analysis():
     # Track Black-Litterman strategies for comparison
     bl_strategies = {}
     
+    # Create a DataFrame to store all strategy results
+    strategy_results = []
+    
     for strategy_name, result in results.items():
         metrics = result['performance_metrics']
         summary = result['summary']
         
-        print(f"\n{strategy_name}:")
-        print(f"  Total Return: {metrics.get('total_return', 0):.2%}")
-        print(f"  Annualized Return: {metrics.get('annualized_return', 0):.2%}")
-        print(f"  Volatility: {metrics.get('volatility', 0):.2%}")
-        print(f"  Sharpe Ratio: {metrics.get('sharpe_ratio', 0):.3f}")
-        print(f"  Sortino Ratio: {metrics.get('sortino_ratio', 0):.3f}")
-        print(f"  Max Drawdown: {metrics.get('max_drawdown', 0):.2%}")
-        print(f"  Number of Transactions: {summary.get('num_transactions', 0)}")
-        print(f"  Total Transaction Costs: ${summary.get('total_transaction_costs', 0):.2f}")
+        # Store results for DataFrame
+        strategy_results.append({
+            'Strategy': strategy_name,
+            'Total Return (%)': f"{metrics.get('total_return', 0):.2f}",
+            'Annualized Return (%)': f"{metrics.get('annualized_return', 0):.2f}",
+            'Volatility (%)': f"{metrics.get('volatility', 0):.2f}",
+            'Sharpe Ratio': f"{metrics.get('sharpe_ratio', 0):.3f}",
+            'Sortino Ratio': f"{metrics.get('sortino_ratio', 0):.3f}",
+            'Max Drawdown (%)': f"{metrics.get('max_drawdown', 0):.2f}",
+            'Transactions': summary.get('num_transactions', 0),
+            'Transaction Costs ($)': f"{summary.get('total_transaction_costs', 0):.2f}"
+        })
         
         # Store Black-Litterman results for comparison
         if 'Black-Litterman' in strategy_name:
             bl_strategies[strategy_name] = result
+    
+    # Create and display the results DataFrame
+    results_df = pd.DataFrame(strategy_results)
+    
+    print("\nStrategy Performance Summary Table:")
+    print("=" * 100)
+    print(results_df.to_string(index=False))
+    
+    # Also display a formatted table with better alignment
+    print("\n" + "=" * 100)
+    print("FORMATTED STRATEGY COMPARISON")
+    print("=" * 100)
+    
+    # Format the DataFrame for better display
+    display_df = results_df.copy()
+    
+    # Convert percentage columns to numeric for sorting
+    display_df['Total Return (%)'] = pd.to_numeric(display_df['Total Return (%)'].str.rstrip('%'), errors='coerce')
+    display_df['Annualized Return (%)'] = pd.to_numeric(display_df['Annualized Return (%)'].str.rstrip('%'), errors='coerce')
+    display_df['Sharpe Ratio'] = pd.to_numeric(display_df['Sharpe Ratio'], errors='coerce')
+    
+    # Sort by Sharpe ratio (descending)
+    display_df = display_df.sort_values('Sharpe Ratio', ascending=False)
+    
+    # Convert back to formatted strings
+    display_df['Total Return (%)'] = display_df['Total Return (%)'].apply(lambda x: f"{x:.2f}%" if pd.notna(x) else "N/A")
+    display_df['Annualized Return (%)'] = display_df['Annualized Return (%)'].apply(lambda x: f"{x:.2f}%" if pd.notna(x) else "N/A")
+    display_df['Sharpe Ratio'] = display_df['Sharpe Ratio'].apply(lambda x: f"{x:.3f}" if pd.notna(x) else "N/A")
+    
+    print(display_df.to_string(index=False))
+    
+    # Show top performers
+    print(f"\n🏆 Top 3 Strategies by Sharpe Ratio:")
+    top_3 = display_df.head(3)
+    for i, (_, row) in enumerate(top_3.iterrows(), 1):
+        print(f"   {i}. {row['Strategy']}: Sharpe = {row['Sharpe Ratio']}, Return = {row['Annualized Return (%)']}")
     
     # Compare Black-Litterman strategies if we have both
     if len(bl_strategies) >= 2:
@@ -263,6 +305,10 @@ def run_portfolio_analysis():
     # Export comparison to CSV
     comparison.to_csv('strategy_comparison.csv', index=False)
     print("   Exported strategy comparison to 'strategy_comparison.csv'")
+    
+    # Export detailed strategy results to CSV
+    results_df.to_csv('detailed_strategy_results.csv', index=False)
+    print("   Exported detailed strategy results to 'detailed_strategy_results.csv'")
     
     # Export detailed results to JSON
     backtester.export_results('detailed_results.json', format='json')
@@ -459,6 +505,7 @@ def run_portfolio_analysis():
         print(f"   Target symbols: {', '.join(target_symbols)}")
     print(f"\nGenerated files:")
     print(f"  - strategy_comparison.csv")
+    print(f"  - detailed_strategy_results.csv")
     print(f"  - detailed_results.json")
     print(f"  - portfolio_values.png")
     print(f"  - rolling_metrics.png")
