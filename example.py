@@ -3,12 +3,14 @@
 Example script demonstrating the portfolio optimization and backtesting system.
 
 This script shows how to:
-1. Load data from CSV files
+1. Load data from CSV files in data/price directory
 2. Create and configure optimization strategies
 3. Run backtests
 4. Compare strategy performance
 5. Generate reports and visualizations
 6. Compare Black-Litterman strategies with different view methods (momentum vs upside)
+
+Data Source: CSV files in data/price directory (not generated sample data)
 """
 
 import pandas as pd
@@ -91,21 +93,30 @@ def run_portfolio_analysis():
     print("PORTFOLIO OPTIMIZATION AND BACKTESTING SYSTEM")
     print("=" * 60)
     
-    # Step 1: Create sample data
-    # data_dir = create_sample_data()
-    data_dir = "price"
+    # Step 1: Use existing CSV data
+    # data_dir = create_sample_data()  # Commented out - using existing data
+    data_dir = "data/price"  # Path to CSV files
     
     # Step 2: Load and validate data
     print("\n1. Loading and validating data...")
-    data_loader = DataLoader(data_dir)
+    print(f"   Data directory: {data_dir}")
     
-    # Load all available data
-    prices = data_loader.load_prices()
-    returns = data_loader.get_returns()
-    
-    print(f"   Loaded {len(prices.columns)} tickers")
-    print(f"   Date range: {prices.index.min()} to {prices.index.max()}")
-    print(f"   Total observations: {len(prices)}")
+    try:
+        data_loader = DataLoader(data_dir)
+        
+        # Load all available data
+        prices = data_loader.load_prices()
+        returns = data_loader.get_returns()
+        
+        print(f"   ✅ Successfully loaded {len(prices.columns)} tickers")
+        print(f"   📅 Date range: {prices.index.min()} to {prices.index.max()}")
+        print(f"   📊 Total observations: {len(prices)}")
+        print(f"   📈 Available tickers: {', '.join(prices.columns[:10])}{'...' if len(prices.columns) > 10 else ''}")
+        
+    except Exception as e:
+        print(f"   ❌ Error loading data: {e}")
+        print(f"   💡 Make sure the data directory '{data_dir}' contains CSV files")
+        raise
     
     # Validate data
     validator = DataValidator()
@@ -425,7 +436,8 @@ def run_portfolio_analysis():
         except Exception as e:
             print(f"\nWarning: Could not clean up temporary data: {e}")
     else:
-        print(f"\nUsing existing data directory: {data_dir}")
+        print(f"\nUsing existing CSV data from: {data_dir}")
+        print(f"   Found {len(prices.columns)} ticker files")
     print(f"\nGenerated files:")
     print(f"  - strategy_comparison.csv")
     print(f"  - detailed_results.json")
