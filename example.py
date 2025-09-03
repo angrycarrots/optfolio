@@ -101,21 +101,39 @@ def run_portfolio_analysis():
     print("\n1. Loading and validating data...")
     print(f"   Data directory: {data_dir}")
     
+    # Define the specific symbols to analyze
+    target_symbols = [
+        'WSM', 'PAYX', 'BMI', 'BK', 'NDAQ', 'MSI', 'WMT', 'TJX', 'AIG', 'RJF', 
+        'V', 'CTAS', 'TT', 'TRGP', 'JPM', 'GE', 'MCK', 'PH', 'LLY', 'COST', 
+        'AVGO', 'NEE', 'AMAT', 'ADI', 'SHW', 'INTU', 'KLAC'
+    ]
+    
+    print(f"   🎯 Target symbols: {len(target_symbols)} tickers")
+    print(f"   📋 Symbol list: {', '.join(target_symbols)}")
+    
     try:
         data_loader = DataLoader(data_dir)
         
-        # Load all available data
-        prices = data_loader.load_prices()
+        # Load data for specific symbols only
+        prices = data_loader.load_prices(tickers=target_symbols)
         returns = data_loader.get_returns()
         
-        print(f"   ✅ Successfully loaded {len(prices.columns)} tickers")
+        # Filter returns to match the loaded prices
+        returns = returns[prices.columns]
+        
+        print(f"   ✅ Successfully loaded {len(prices.columns)} target tickers")
         print(f"   📅 Date range: {prices.index.min()} to {prices.index.max()}")
         print(f"   📊 Total observations: {len(prices)}")
-        print(f"   📈 Available tickers: {', '.join(prices.columns[:10])}{'...' if len(prices.columns) > 10 else ''}")
+        print(f"   📈 Loaded tickers: {', '.join(prices.columns)}")
+        
+        # Check if any target symbols were not found
+        missing_symbols = set(target_symbols) - set(prices.columns)
+        if missing_symbols:
+            print(f"   ⚠️  Warning: {len(missing_symbols)} symbols not found: {', '.join(missing_symbols)}")
         
     except Exception as e:
         print(f"   ❌ Error loading data: {e}")
-        print(f"   💡 Make sure the data directory '{data_dir}' contains CSV files")
+        print(f"   💡 Make sure the data directory '{data_dir}' contains CSV files for the target symbols")
         raise
     
     # Validate data
@@ -164,8 +182,8 @@ def run_portfolio_analysis():
         transaction_costs=0.001
     )
     
-    # Load data into backtester
-    backtester.load_data(data_loader)
+    # Load data into backtester (using the same filtered symbols)
+    backtester.load_data(data_loader, tickers=prices.columns.tolist())
     
     # Step 5: Run backtests
     print("\n4. Running backtests...")
@@ -437,7 +455,8 @@ def run_portfolio_analysis():
             print(f"\nWarning: Could not clean up temporary data: {e}")
     else:
         print(f"\nUsing existing CSV data from: {data_dir}")
-        print(f"   Found {len(prices.columns)} ticker files")
+        print(f"   Analyzed {len(prices.columns)} target tickers from {len(target_symbols)} requested")
+        print(f"   Target symbols: {', '.join(target_symbols)}")
     print(f"\nGenerated files:")
     print(f"  - strategy_comparison.csv")
     print(f"  - detailed_results.json")
