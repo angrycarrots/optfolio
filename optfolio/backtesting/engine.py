@@ -216,8 +216,10 @@ class Backtester:
             historical_returns = returns[returns.index < first_date]
             
             if len(historical_returns) > 0:
+                # Get historical prices for the same period
+                historical_prices = prices[prices.index < first_date]
                 # Optimize initial weights
-                initial_weights = strategy.optimize(historical_returns, **kwargs)
+                initial_weights = strategy.optimize(historical_returns, prices=historical_prices, **kwargs)
                 
                 # Get current prices
                 current_prices = prices.loc[first_date].to_dict()
@@ -251,8 +253,10 @@ class Backtester:
                     historical_returns = returns[returns.index <= date]
                     
                     if len(historical_returns) > 30:  # Need at least 30 days of data
+                        # Get historical prices for the same period
+                        historical_prices = prices[prices.index <= date]
                         # Optimize weights
-                        new_weights = strategy.optimize(historical_returns, **kwargs)
+                        new_weights = strategy.optimize(historical_returns, prices=historical_prices, **kwargs)
                         
                         # Rebalance portfolio
                         portfolio.rebalance(new_weights, current_prices)

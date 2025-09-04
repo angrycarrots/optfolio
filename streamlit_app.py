@@ -86,6 +86,8 @@ def run_backtests(prices, returns, _data_loader, start_date, end_date, rebalance
         # Create strategies
         strategies = [
             StrategyFactory.create('equal_weight'),
+            StrategyFactory.create('buy_and_hold', allocation_method="equal_weight"),
+            StrategyFactory.create('buy_and_hold', allocation_method="market_cap"),
             StrategyFactory.create('mean_variance', objective="sortino_ratio"),
             StrategyFactory.create('mean_variance', objective="sharpe_ratio"),
             StrategyFactory.create('random_weight', distribution="dirichlet", seed=42),
@@ -96,7 +98,7 @@ def run_backtests(prices, returns, _data_loader, start_date, end_date, rebalance
         ]
         
         strategy_names = [
-            "Equal Weight", "Mean-Variance (Sortino)", "Mean-Variance (Sharpe)", 
+            "Equal Weight", "Buy and Hold (Equal Weight)", "Buy and Hold (Market Cap)", "Mean-Variance (Sortino)", "Mean-Variance (Sharpe)", 
             "Random Weight", "Black-Litterman (Momentum)", "Black-Litterman (Upside)"
         ]
         
@@ -409,7 +411,7 @@ def main():
     st.sidebar.subheader("📅 Date Range")
     start_date = st.sidebar.date_input(
         "Start Date", 
-        value=pd.to_datetime('2017-01-01').date(),
+        value=pd.to_datetime('2023-01-01').date(),
         min_value=pd.to_datetime('2015-01-01').date(),
         max_value=pd.to_datetime('2025-12-31').date()
     )

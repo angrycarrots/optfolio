@@ -10,6 +10,7 @@ from ..strategies.equal_weight import EqualWeightStrategy
 from ..strategies.mean_variance import MeanVarianceStrategy
 from ..strategies.random_weight import RandomWeightStrategy
 from ..strategies.black_litterman import BlackLittermanStrategy
+from ..strategies.buy_and_hold import BuyAndHoldStrategy
 
 
 class TestStrategyBase:
@@ -443,6 +444,7 @@ class TestStrategyFactory:
         assert 'mean_variance' in available_strategies
         assert 'random_weight' in available_strategies
         assert 'black_litterman' in available_strategies
+        assert 'buy_and_hold' in available_strategies
     
     def test_create_equal_weight_strategy(self):
         """Test creating equal weight strategy."""
@@ -491,10 +493,208 @@ class TestStrategyFactory:
         with pytest.raises(ValueError, match="Strategy 'invalid' not found"):
             StrategyFactory.create('invalid')
     
+    def test_create_buy_and_hold_strategy(self):
+        """Test creating buy-and-hold strategy."""
+        strategy = StrategyFactory.create('buy_and_hold',
+                                        allocation_method="equal_weight")
+        strategy.name = "Test Buy and Hold"
+        
+        assert isinstance(strategy, BuyAndHoldStrategy)
+        assert strategy.name == "Test Buy and Hold"
+        assert strategy.allocation_method == "equal_weight"
+    
     def test_list_strategies(self):
         """Test listing available strategies."""
         strategies = StrategyFactory.list_strategies()
         
         assert isinstance(strategies, list)
-        assert len(strategies) >= 4  # Should have at least our 4 strategies
-        assert all(isinstance(s, str) for s in strategies)
+        assert len(strategies) >= 5  # Should have at least our 5 strategies
+
+
+class TestBuyAndHoldStrategy:
+    """Test cases for BuyAndHoldStrategy."""
+    
+    def setup_method(self):
+        """Set up test data."""
+        # Create sample returns and prices data
+        dates = pd.date_range('2020-01-01', '2023-12-31', freq='D')
+        np.random.seed(42)
+        
+        # Create synthetic price data with different characteristics
+        # High price, low volatility (large cap proxy)
+        high_price_low_vol = 200 + np.cumsum(np.random.normal(0, 0.5, len(dates)))
+        
+        # Medium price, medium volatility
+        med_price_med_vol = 100 + np.cumsum(np.random.normal(0, 1.0, len(dates)))
+        
+        # Low price, high volatility (small cap proxy)
+        low_price_high_vol = 50 + np.cumsum(np.random.normal(0, 2.0, len(dates)))
+        
+        self.prices = pd.DataFrame({
+            'AAPL': high_price_low_vol,  # Large cap proxy
+            'MSFT': med_price_med_vol,   # Mid cap proxy
+            'SMALL': low_price_high_vol  # Small cap proxy
+        }, index=dates)
+        
+        # Calculate returns
+        self.returns = self.prices.pct_change().dropna()
+    
+    def test_equal_weight_allocation(self):
+        """Test equal weight allocation method."""
+        strategy = BuyAndHoldStrategy("Test Equal Weight", allocation_method="equal_weight")
+        
+        weights = strategy.optimize(self.returns)
+        
+        # Check that all weights are equal
+        expected_weight = 1.0 / len(self.returns.columns)
+        for ticker, weight in weights.items():
+            assert abs(weight - expected_weight) < 1e-6
+            assert 0 <= weight <= 1
+        
+        # Check that weights sum to 1
+        assert abs(sum(weights.values()) - 1.0) < 1e-6
+    
+    def test_market_cap_allocation(self):
+        """Test market cap allocation method."""
+        strategy = BuyAndHoldStrategy("Test Market Cap", allocation_method="market_cap")
+        
+        weights = strategy.optimize(self.returns, prices=self.prices)
+        
+        # Check that weights are valid
+        for ticker, weight in weights.items():
+            assert 0 <= weight <= 1
+        
+        # Check that weights sum to 1
+        assert abs(sum(weights.values()) - 1.0) < 1e-6
+        
+        # Check that higher price/lower volatility assets get higher weights
+        # AAPL should have the highest weight (highest price, lowest volatility)
+        assert weights['AAPL'] > weights['MSFT']
+        assert weights['MSFT'] > weights['SMALL']
+    
+    def test_custom_allocation(self):
+        """Test custom allocation method."""
+        custom_weights = {'AAPL': 0.5, 'MSFT': 0.3, 'SMALL': 0.2}
+        strategy = BuyAndHoldStrategy("Test Custom", allocation_method="custom")
+        
+        weights = strategy.optimize(self.returns, custom_weights=custom_weights)
+        
+        # Check that weights match custom weights
+        for ticker, expected_weight in custom_weights.items():
+            assert abs(weights[ticker] - expected_weight) < 1e-6
+    
+    def test_custom_allocation_missing_weights(self):
+        """Test custom allocation with missing weights."""
+        custom_weights = {'AAPL': 0.5, 'MSFT': 0.3}  # Missing SMALL
+        strategy = BuyAndHoldStrategy("Test Custom", allocation_method="custom")
+        
+        with pytest.raises(ValueError, match="Missing weights for tickers"):
+            strategy.optimize(self.returns, custom_weights=custom_weights)
+    
+    def test_custom_allocation_invalid_sum(self):
+        """Test custom allocation with weights that don't sum to 1."""
+        custom_weights = {'AAPL': 0.5, 'MSFT': 0.3, 'SMALL': 0.3}  # Sum = 1.1
+        strategy = BuyAndHoldStrategy("Test Custom", allocation_method="custom")
+        
+        with pytest.raises(ValueError, match="Custom weights must sum to 1.0"):
+            strategy.optimize(self.returns, custom_weights=custom_weights)
+    
+    def test_market_cap_fallback_to_equal_weight(self):
+        """Test market cap allocation falls back to equal weight when no prices provided."""
+        strategy = BuyAndHoldStrategy("Test Market Cap", allocation_method="market_cap")
+        
+        # Don't provide prices - should fall back to equal weights
+        weights = strategy.optimize(self.returns)
+        
+        # Should be equal weights
+        expected_weight = 1.0 / len(self.returns.columns)
+        for ticker, weight in weights.items():
+            assert abs(weight - expected_weight) < 1e-6
+    
+    def test_invalid_allocation_method(self):
+        """Test invalid allocation method."""
+        strategy = BuyAndHoldStrategy("Test Invalid", allocation_method="invalid")
+        
+        with pytest.raises(ValueError, match="Unknown allocation method"):
+            strategy.optimize(self.returns)
+    
+    def test_constraints_application(self):
+        """Test that constraints are applied correctly."""
+        strategy = BuyAndHoldStrategy("Test Constraints", allocation_method="equal_weight")
+        
+        constraints = {'min_weight': 0.1, 'max_weight': 0.5}
+        weights = strategy.optimize(self.returns, constraints=constraints)
+        
+        # Check that constraints are applied
+        for ticker, weight in weights.items():
+            assert weight >= 0.1
+            assert weight <= 0.5
+        
+        # Weights should still sum to 1
+        assert abs(sum(weights.values()) - 1.0) < 1e-6
+    
+    def test_get_parameters(self):
+        """Test get_parameters method."""
+        strategy = BuyAndHoldStrategy("Test Params", allocation_method="market_cap")
+        
+        params = strategy.get_parameters()
+        
+        assert params['strategy_type'] == 'buy_and_hold'
+        assert params['allocation_method'] == 'market_cap'
+        assert params['rebalancing'] is False
+        assert 'description' in params
+    
+    def test_str_representation(self):
+        """Test string representation."""
+        strategy = BuyAndHoldStrategy("Test String", allocation_method="custom")
+        
+        str_repr = str(strategy)
+        assert "Test String" in str_repr
+        assert "Buy and Hold" in str_repr
+        assert "custom" in str_repr
+    
+    def test_allocation_methods_different_results(self):
+        """Test that different allocation methods produce different results."""
+        equal_strategy = BuyAndHoldStrategy("Equal", allocation_method="equal_weight")
+        market_cap_strategy = BuyAndHoldStrategy("Market Cap", allocation_method="market_cap")
+        
+        equal_weights = equal_strategy.optimize(self.returns, prices=self.prices)
+        market_cap_weights = market_cap_strategy.optimize(self.returns, prices=self.prices)
+        
+        # Check that weights are different
+        weights_equal = all(abs(equal_weights[ticker] - market_cap_weights[ticker]) < 1e-6 
+                           for ticker in equal_weights.keys())
+        
+        assert not weights_equal, "Equal weight and market cap allocation should produce different results"
+    
+    def test_empty_returns_dataframe(self):
+        """Test handling of empty returns DataFrame."""
+        strategy = BuyAndHoldStrategy("Test Empty", allocation_method="equal_weight")
+        
+        with pytest.raises(ValueError, match="Returns DataFrame is empty"):
+            strategy.optimize(pd.DataFrame())
+    
+    def test_single_asset(self):
+        """Test with single asset."""
+        single_returns = self.returns[['AAPL']]
+        strategy = BuyAndHoldStrategy("Test Single", allocation_method="equal_weight")
+        
+        weights = strategy.optimize(single_returns)
+        
+        assert len(weights) == 1
+        assert weights['AAPL'] == 1.0
+    
+    def test_strategy_factory_integration(self):
+        """Test integration with StrategyFactory."""
+        # Test default creation
+        strategy1 = StrategyFactory.create('buy_and_hold')
+        assert isinstance(strategy1, BuyAndHoldStrategy)
+        assert strategy1.allocation_method == "equal_weight"
+        
+        # Test with parameters
+        strategy2 = StrategyFactory.create('buy_and_hold', 
+                                         allocation_method="market_cap")
+        assert isinstance(strategy2, BuyAndHoldStrategy)
+        assert strategy2.allocation_method == "market_cap"
+        # Name is set by the factory, not by our parameter
+        assert strategy2.name == "buy_and_hold"
