@@ -60,7 +60,8 @@ class OptimizationStrategy(ABC):
             raise ValueError("Returns DataFrame has no columns")
             
         # Check for excessive missing data
-        missing_pct = returns.isnull().sum(axis=0) / len(returns)
+        missing_counts = np.sum(returns.isnull(), axis=0)
+        missing_pct = missing_counts / len(returns)
         high_missing = missing_pct[missing_pct > 0.5]
         if not high_missing.empty:
             raise ValueError(f"Too much missing data for tickers: {list(high_missing.index)}")

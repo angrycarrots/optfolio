@@ -127,13 +127,23 @@ def run_backtests(prices, returns, _data_loader, start_date, end_date, rebalance
             # Rebalance every N months
             rebalance_freq = {"months": rebalance_months, "weeks": 1, "days": 1}
         
-        # Run backtests for all strategies
-        results = backtester.run_multiple_backtests(
-            strategies=strategies,
-            rebalance_freq=rebalance_freq,
-            start_date=start_date,
-            end_date=end_date
-        )
+        # Run backtests for each strategy individually to handle buy-and-hold correctly
+        results = {}
+        for strategy in strategies:
+            # Buy-and-hold strategies should always use None rebalance_freq
+            if 'buy and hold' in strategy.name.lower():
+                strategy_rebalance_freq = None
+            else:
+                strategy_rebalance_freq = rebalance_freq
+            
+            # Run backtest for this strategy
+            strategy_result = backtester.run_backtest(
+                strategy=strategy,
+                rebalance_freq=strategy_rebalance_freq,
+                start_date=start_date,
+                end_date=end_date
+            )
+            results[strategy.name] = strategy_result
         
         return results, strategies
         
@@ -168,6 +178,7 @@ def create_strategy_comparison_table(results):
             'Sortino Ratio': f"{metrics.get('sortino_ratio', 0):.3f}",
             'Max Drawdown (%)': f"{metrics.get('max_drawdown', 0):.2f}",
             'P-Value (t-test)': p_value_str,
+            'Rebalances': summary.get('num_rebalances', 0),
             'Transactions': summary.get('num_transactions', 0),
             'Transaction Costs ($)': f"{summary.get('total_transaction_costs', 0):.2f}"
         })
@@ -540,7 +551,7 @@ def main():
         result = results[selected_strategy]
         metrics = result['performance_metrics']
         
-        col1, col2, col3, col4 = st.columns(4)
+        col1, col2, col3, col4, col5 = st.columns(5)
         
         with col1:
             st.metric(
@@ -566,9 +577,17 @@ def main():
         with col4:
             summary = result['summary']
             st.metric(
-                "Transactions",
-                summary.get('num_transactions', 0),
-                delta=f"${summary.get('total_transaction_costs', 0):.2f} (costs)"
+                "Rebalances",
+                summary.get('num_rebalances', 0),
+                delta=f"{summary.get('num_transactions', 0)} (trades)"
+            )
+        
+        with col5:
+            summary = result['summary']
+            st.metric(
+                "Transaction Costs",
+                f"${summary.get('total_transaction_costs', 0):.2f}",
+                delta=f"{summary.get('num_transactions', 0)} trades"
             )
     
     # Charts
