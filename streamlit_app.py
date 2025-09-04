@@ -80,7 +80,7 @@ def load_data():
         return None, None, None
 
 @st.cache_data
-def run_backtests(prices, returns, data_loader, start_date, end_date):
+def run_backtests(prices, returns, _data_loader, start_date, end_date):
     """Run backtests and cache results."""
     try:
         # Create strategies
@@ -115,7 +115,7 @@ def run_backtests(prices, returns, data_loader, start_date, end_date):
         )
         
         # Load data into backtester
-        backtester.load_data(data_loader, tickers=prices.columns.tolist())
+        backtester.load_data(_data_loader, tickers=prices.columns.tolist())
         
         # Define rebalancing schedule (every 3 months, 1st week, 1st day)
         rebalance_freq = {"months": 3, "weeks": 1, "days": 1}
@@ -141,6 +141,16 @@ def create_strategy_comparison_table(results):
     for strategy_name, result in results.items():
         metrics = result['performance_metrics']
         summary = result['summary']
+        significance = result.get('significance', {})
+        
+        # Format p-value with appropriate precision
+        p_value = significance.get('p_value', np.nan)
+        if np.isnan(p_value):
+            p_value_str = "N/A"
+        elif p_value < 0.001:
+            p_value_str = "< 0.001"
+        else:
+            p_value_str = f"{p_value:.3f}"
         
         strategy_results.append({
             'Strategy': strategy_name,
@@ -150,6 +160,7 @@ def create_strategy_comparison_table(results):
             'Sharpe Ratio': f"{metrics.get('sharpe_ratio', 0):.3f}",
             'Sortino Ratio': f"{metrics.get('sortino_ratio', 0):.3f}",
             'Max Drawdown (%)': f"{metrics.get('max_drawdown', 0):.2f}",
+            'P-Value (t-test)': p_value_str,
             'Transactions': summary.get('num_transactions', 0),
             'Transaction Costs ($)': f"{summary.get('total_transaction_costs', 0):.2f}"
         })
@@ -186,7 +197,7 @@ def plot_portfolio_values(results, selected_strategy):
     )
     
     # Format y-axis as currency
-    fig.update_yaxis(tickformat='$,.0f')
+    fig.update_yaxes(tickformat='$,.0f')
     
     return fig
 
@@ -209,15 +220,19 @@ def plot_asset_allocation(results, selected_strategy):
     else:
         weight_df = weight_history
     
-    # Get top 10 assets by average weight
+    # Ensure all weights sum to 1.0 (100%) for each time period
+    weight_df = weight_df.div(weight_df.sum(axis=1), axis=0)
+    
+    # Get all assets, sorted by average weight (descending)
     avg_weights = weight_df.mean().sort_values(ascending=False)
-    top_assets = avg_weights.head(10).index.tolist()
+    all_assets = avg_weights.index.tolist()
     
     fig = go.Figure()
     
-    colors = px.colors.qualitative.Set3
+    # Use a larger color palette to handle many assets
+    colors = px.colors.qualitative.Set3 + px.colors.qualitative.Pastel1 + px.colors.qualitative.Pastel2
     
-    for i, asset in enumerate(top_assets):
+    for i, asset in enumerate(all_assets):
         if asset in weight_df.columns:
             fig.add_trace(go.Scatter(
                 x=weight_df.index,
@@ -226,7 +241,11 @@ def plot_asset_allocation(results, selected_strategy):
                 name=asset,
                 stackgroup='one',
                 line=dict(width=0),
-                fillcolor=colors[i % len(colors)]
+                fillcolor=colors[i % len(colors)],
+                hovertemplate=f'<b>{asset}</b><br>' +
+                             'Date: %{x}<br>' +
+                             'Weight: %{y:.1%}<br>' +
+                             '<extra></extra>'
             ))
     
     fig.update_layout(
@@ -236,7 +255,17 @@ def plot_asset_allocation(results, selected_strategy):
         hovermode='x unified',
         template="plotly_white",
         height=500,
-        yaxis=dict(tickformat='.1%')
+        yaxis=dict(
+            tickformat='.0%',
+            range=[0, 1]  # Ensure y-axis goes from 0% to 100%
+        ),
+        legend=dict(
+            orientation="v",
+            yanchor="top",
+            y=1,
+            xanchor="left",
+            x=1.02
+        )
     )
     
     return fig
@@ -373,7 +402,7 @@ def main():
     st.markdown('<div class="strategy-comparison">', unsafe_allow_html=True)
     st.dataframe(
         comparison_df,
-        use_container_width=True,
+        width='stretch',
         hide_index=True
     )
     st.markdown('</div>', unsafe_allow_html=True)
@@ -429,7 +458,7 @@ def main():
     # Portfolio value over time
     portfolio_fig = plot_portfolio_values(results, selected_strategy)
     if portfolio_fig:
-        st.plotly_chart(portfolio_fig, use_container_width=True)
+        st.plotly_chart(portfolio_fig, width='stretch')
     else:
         st.warning("Portfolio value data not available for the selected strategy.")
     
@@ -440,7 +469,7 @@ def main():
         # Asset allocation over time
         allocation_fig = plot_asset_allocation(results, selected_strategy)
         if allocation_fig:
-            st.plotly_chart(allocation_fig, use_container_width=True)
+            st.plotly_chart(allocation_fig, width='stretch')
         else:
             st.warning("Asset allocation data not available for the selected strategy.")
     
@@ -448,14 +477,14 @@ def main():
         # Rolling Sharpe ratio
         sharpe_fig = plot_rolling_sharpe(results, selected_strategy)
         if sharpe_fig:
-            st.plotly_chart(sharpe_fig, use_container_width=True)
+            st.plotly_chart(sharpe_fig, width='stretch')
         else:
             st.warning("Rolling Sharpe ratio data not available for the selected strategy.")
     
     # Final portfolio weights
     weights_fig = plot_final_weights(results, selected_strategy)
     if weights_fig:
-        st.plotly_chart(weights_fig, use_container_width=True)
+        st.plotly_chart(weights_fig, width='stretch')
     else:
         st.warning("Final portfolio weights not available for the selected strategy.")
     

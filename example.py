@@ -221,6 +221,16 @@ def run_portfolio_analysis():
     for strategy_name, result in results.items():
         metrics = result['performance_metrics']
         summary = result['summary']
+        significance = result.get('significance', {})
+        
+        # Format p-value with appropriate precision
+        p_value = significance.get('p_value', np.nan)
+        if np.isnan(p_value):
+            p_value_str = "N/A"
+        elif p_value < 0.001:
+            p_value_str = "< 0.001"
+        else:
+            p_value_str = f"{p_value:.3f}"
         
         # Store results for DataFrame
         strategy_results.append({
@@ -231,6 +241,7 @@ def run_portfolio_analysis():
             'Sharpe Ratio': f"{metrics.get('sharpe_ratio', 0):.3f}",
             'Sortino Ratio': f"{metrics.get('sortino_ratio', 0):.3f}",
             'Max Drawdown (%)': f"{metrics.get('max_drawdown', 0):.2f}",
+            'P-Value (t-test)': p_value_str,
             'Transactions': summary.get('num_transactions', 0),
             'Transaction Costs ($)': f"{summary.get('total_transaction_costs', 0):.2f}"
         })
