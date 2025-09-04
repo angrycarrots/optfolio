@@ -25,7 +25,7 @@ class Backtester:
         Args:
             initial_capital: Initial portfolio value
             risk_free_rate: Annual risk-free rate
-            transaction_costs: Transaction cost as a fraction of trade value
+            transaction_costs: Fixed transaction cost per trade (in dollars)
         """
         self.initial_capital = initial_capital
         self.risk_free_rate = risk_free_rate

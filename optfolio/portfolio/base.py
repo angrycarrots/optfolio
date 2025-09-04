@@ -20,7 +20,7 @@ class Portfolio:
         Args:
             initial_capital: Initial portfolio value
             risk_free_rate: Annual risk-free rate
-            transaction_costs: Transaction cost as a fraction of trade value
+            transaction_costs: Fixed transaction cost per trade (in dollars)
         """
         self.initial_capital = initial_capital
         self.current_capital = initial_capital
@@ -121,9 +121,8 @@ class Portfolio:
             if abs(trade_shares) > 1e-6:  # Only trade if significant difference
                 trades[ticker] = trade_shares
                 
-                # Calculate transaction costs
-                trade_value = abs(trade_shares * current_prices[ticker])
-                transaction_cost = trade_value * self.transaction_costs
+                # Calculate transaction costs (fixed cost per transaction)
+                transaction_cost = self.transaction_costs
                 total_transaction_cost += transaction_cost
                 
         # Execute trades
