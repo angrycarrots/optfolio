@@ -398,6 +398,46 @@ def plot_final_weights(results, selected_strategy):
     
     return fig
 
+def create_transactions_table(results, selected_strategy):
+    """Create a transactions table for the selected strategy."""
+    if selected_strategy not in results:
+        return None
+    
+    result = results[selected_strategy]
+    if 'transaction_history' not in result or not result['transaction_history']:
+        return None
+    
+    transaction_history = result['transaction_history']
+    
+    # Flatten the transaction history into individual trades
+    transactions = []
+    for transaction in transaction_history:
+        date = transaction['date']
+        trades = transaction['trades']
+        transaction_cost = transaction['transaction_cost']
+        portfolio_value = transaction['portfolio_value']
+        
+        for symbol, shares in trades.items():
+            if abs(shares) > 1e-6:  # Only include significant trades
+                action = "BUY" if shares > 0 else "SELL"
+                transactions.append({
+                    'Date': date.strftime('%Y-%m-%d'),
+                    'Symbol': symbol,
+                    'Action': action,
+                    'Shares': abs(shares),
+                    'Transaction Cost ($)': transaction_cost,
+                    'Portfolio Value ($)': portfolio_value
+                })
+    
+    if not transactions:
+        return None
+    
+    # Convert to DataFrame and sort by date
+    df = pd.DataFrame(transactions)
+    df = df.sort_values('Date')
+    
+    return df
+
 def main():
     """Main Streamlit app."""
     
@@ -566,6 +606,49 @@ def main():
         st.plotly_chart(weights_fig, width='stretch')
     else:
         st.warning("Final portfolio weights not available for the selected strategy.")
+    
+    # Transactions table
+    st.header("📋 Transaction History")
+    
+    transactions_df = create_transactions_table(results, selected_strategy)
+    if transactions_df is not None and not transactions_df.empty:
+        st.markdown(f"**{len(transactions_df)} transactions** for {selected_strategy}")
+        
+        # Format the DataFrame for better display
+        display_df = transactions_df.copy()
+        display_df['Shares'] = display_df['Shares'].round(2)
+        display_df['Transaction Cost ($)'] = display_df['Transaction Cost ($)'].round(2)
+        display_df['Portfolio Value ($)'] = display_df['Portfolio Value ($)'].round(2)
+        
+        # Display the table
+        st.dataframe(
+            display_df,
+            width='stretch',
+            hide_index=True,
+            use_container_width=True
+        )
+        
+        # Add summary statistics
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            total_trades = len(transactions_df)
+            st.metric("Total Trades", total_trades)
+        
+        with col2:
+            buy_trades = len(transactions_df[transactions_df['Action'] == 'BUY'])
+            st.metric("Buy Orders", buy_trades)
+        
+        with col3:
+            sell_trades = len(transactions_df[transactions_df['Action'] == 'SELL'])
+            st.metric("Sell Orders", sell_trades)
+        
+        with col4:
+            total_cost = transactions_df['Transaction Cost ($)'].sum()
+            st.metric("Total Transaction Costs", f"${total_cost:.2f}")
+            
+    else:
+        st.info(f"No transactions recorded for {selected_strategy}. This may be a buy-and-hold strategy with no rebalancing.")
     
     # Footer
     st.markdown("---")
