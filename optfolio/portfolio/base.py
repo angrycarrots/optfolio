@@ -282,7 +282,7 @@ class Portfolio:
             'total_return': (self.current_capital / self.initial_capital) - 1,
             'current_weights': self.weights.copy(),
             'current_positions': self.positions.copy(),
-            'num_transactions': len(self.transaction_history),
+            'num_transactions': sum(len(t['trades']) for t in self.transaction_history),
             'total_transaction_costs': sum(t['transaction_cost'] for t in self.transaction_history),
             'data_points': len(self.portfolio_values)
         }
