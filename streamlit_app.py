@@ -350,7 +350,7 @@ def main():
     """Main Streamlit app."""
     
     # Header
-    st.markdown('<h1 class="main-header">📊 Portfolio Optimization Dashboard</h1>', unsafe_allow_html=True)
+    # st.markdown('<h1 class="main-header">📊 Portfolio Optimization Dashboard</h1>', unsafe_allow_html=True)
     
     # Sidebar
     st.sidebar.header("⚙️ Configuration")
@@ -359,14 +359,14 @@ def main():
     st.sidebar.subheader("📅 Date Range")
     start_date = st.sidebar.date_input(
         "Start Date", 
-        value=pd.to_datetime('2021-01-01').date(),
+        value=pd.to_datetime('2017-01-01').date(),
         min_value=pd.to_datetime('2015-01-01').date(),
         max_value=pd.to_datetime('2025-12-31').date()
     )
     
     end_date = st.sidebar.date_input(
         "End Date", 
-        value=pd.to_datetime('2023-12-31').date(),
+        value=pd.to_datetime('2025-08-31').date(),
         min_value=pd.to_datetime('2015-01-01').date(),
         max_value=pd.to_datetime('2025-12-31').date()
     )
@@ -376,7 +376,7 @@ def main():
     rebalance_months = st.sidebar.selectbox(
         "Rebalance Period (months)",
         options=[0, 1, 2, 3, 6, 12],
-        index=2,  # Default to 3 months
+        index=3,  # Default to 3 months
         help="0 = Buy and Hold (no rebalancing), 1-12 = Rebalance every N months"
     )
     
@@ -472,7 +472,7 @@ def main():
             )
     
     # Charts
-    st.header("📈 Visualizations")
+    # st.header("📈 Visualizations")
     
     # Portfolio value over time
     portfolio_fig = plot_portfolio_values(results, selected_strategy)
