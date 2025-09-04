@@ -311,6 +311,56 @@ def plot_rolling_sharpe(results, selected_strategy):
     
     return fig
 
+def plot_all_strategies_comparison(results):
+    """Create portfolio value over time chart for all strategies."""
+    if not results:
+        return None
+    
+    fig = go.Figure()
+    
+    # Define colors for different strategies
+    colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f']
+    
+    for i, (strategy_name, result) in enumerate(results.items()):
+        if 'portfolio_values' not in result or len(result['portfolio_values']) == 0:
+            continue
+            
+        portfolio_series = result['portfolio_values']
+        color = colors[i % len(colors)]
+        
+        fig.add_trace(go.Scatter(
+            x=portfolio_series.index,
+            y=portfolio_series.values,
+            mode='lines',
+            name=strategy_name,
+            line=dict(width=2, color=color),
+            hovertemplate=f'<b>{strategy_name}</b><br>' +
+                         'Date: %{x}<br>' +
+                         'Value: $%{y:,.0f}<br>' +
+                         '<extra></extra>'
+        ))
+    
+    fig.update_layout(
+        title="Portfolio Value Comparison - All Strategies",
+        xaxis_title="Date",
+        yaxis_title="Portfolio Value ($)",
+        hovermode='x unified',
+        template="plotly_white",
+        height=500,
+        legend=dict(
+            orientation="v",
+            yanchor="top",
+            y=1,
+            xanchor="left",
+            x=1.02
+        )
+    )
+    
+    # Format y-axis as currency
+    fig.update_yaxes(tickformat='$,.0f')
+    
+    return fig
+
 def plot_final_weights(results, selected_strategy):
     """Create final portfolio weights bar chart."""
     if selected_strategy not in results:
@@ -425,6 +475,14 @@ def main():
         hide_index=True
     )
     st.markdown('</div>', unsafe_allow_html=True)
+    
+    # Portfolio value comparison chart for all strategies
+    st.header("📈 Portfolio Value Comparison")
+    all_strategies_fig = plot_all_strategies_comparison(results)
+    if all_strategies_fig:
+        st.plotly_chart(all_strategies_fig, width='stretch')
+    else:
+        st.warning("Portfolio value data not available for comparison.")
     
     # Strategy selection
     st.header("📊 Strategy Analysis")
