@@ -452,7 +452,9 @@ class BlackLittermanStrategy(OptimizationStrategy):
             print("Warning: No upside views could be generated. Falling back to momentum views.")
             return self._generate_momentum_views(returns, **kwargs)
         
-        print(f"Successfully generated {successful_views} upside views out of {len(symbols)} symbols")
+        # Get the current date from the returns DataFrame index
+        current_date = returns.index[-1].strftime('%Y-%m-%d') if len(returns.index) > 0 else 'Unknown'
+        print(f"Successfully generated {successful_views} upside views out of {len(symbols)} symbols for rebalancing date {current_date}")
         
         return views_matrix, confidence_levels
     

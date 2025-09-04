@@ -218,38 +218,34 @@ class Backtester:
                 # Initial rebalance
                 portfolio.rebalance(initial_weights, current_prices)
         
-        # Main backtest loop
-        for i, rebalance_date in enumerate(rebalance_dates):
-            if rebalance_date not in prices.index:
-                continue
-            
+        # Step through every trading day for daily portfolio values
+        all_dates = prices.index
+        
+        # Track rebalancing dates for optimization
+        rebalance_index = 0
+        
+        for date in all_dates:
             # Get current prices
-            current_prices = prices.loc[rebalance_date].to_dict()
-            
-            # Step portfolio forward
-            portfolio.step(rebalance_date, current_prices)
-            
-            # Rebalance if not the last date
-            if i < len(rebalance_dates) - 1:
-                next_rebalance_date = rebalance_dates[i + 1]
-                
-                # Get historical data for optimization (use data up to current date)
-                historical_returns = returns[returns.index <= rebalance_date]
-                
-                if len(historical_returns) > 30:  # Need at least 30 days of data
-                    # Optimize weights
-                    new_weights = strategy.optimize(historical_returns, **kwargs)
-                    
-                    # Rebalance portfolio
-                    portfolio.rebalance(new_weights, current_prices)
-        
-        # Step through remaining dates
-        last_rebalance_date = rebalance_dates[-1] if rebalance_dates else prices.index[0]
-        remaining_dates = prices[prices.index > last_rebalance_date].index
-        
-        for date in remaining_dates:
             current_prices = prices.loc[date].to_dict()
+            
+            # Step portfolio forward (this records daily portfolio values)
             portfolio.step(date, current_prices)
+            
+            # Check if this is a rebalancing date
+            if rebalance_dates and rebalance_index < len(rebalance_dates) and date == rebalance_dates[rebalance_index]:
+                # This is a rebalancing date - optimize and rebalance
+                if rebalance_index < len(rebalance_dates) - 1:  # Don't rebalance on the last date
+                    # Get historical data for optimization (use data up to current date)
+                    historical_returns = returns[returns.index <= date]
+                    
+                    if len(historical_returns) > 30:  # Need at least 30 days of data
+                        # Optimize weights
+                        new_weights = strategy.optimize(historical_returns, **kwargs)
+                        
+                        # Rebalance portfolio
+                        portfolio.rebalance(new_weights, current_prices)
+                
+                rebalance_index += 1
         
         # Calculate performance metrics
         portfolio_series = portfolio.get_portfolio_series()
