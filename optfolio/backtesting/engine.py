@@ -76,9 +76,10 @@ class Backtester:
         if self.prices is None or self.returns is None:
             raise ValueError("Data not loaded. Call load_data() first.")
         
-        # Set default rebalancing frequency
+        # Handle buy-and-hold case (no rebalancing)
         if rebalance_freq is None:
-            rebalance_freq = {"months": 3, "weeks": 1, "days": 1}
+            # For buy-and-hold, we only rebalance once at the beginning
+            rebalance_freq = {"months": 0, "weeks": 0, "days": 0}
         
         # Filter data by date range
         prices_filtered = self._filter_by_date(self.prices, start_date, end_date)
@@ -169,6 +170,15 @@ class Backtester:
         weeks = rebalance_freq.get("weeks", 0)
         days = rebalance_freq.get("days", 0)
         
+        # Handle buy-and-hold case (no rebalancing after initial)
+        if months == 0 and weeks == 0 and days == 0:
+            # For buy-and-hold, use a date that allows for some historical data
+            # Use the 30th date to ensure we have enough historical data for optimization
+            if len(dates) > 30:
+                return [dates[30]]  # Use 30th date to have historical data
+            else:
+                return [dates[0]]  # Fallback to first date if not enough data
+        
         # Convert to pandas frequency string
         if months > 0:
             freq = f"{months}ME"  # Month End
@@ -234,7 +244,9 @@ class Backtester:
             # Check if this is a rebalancing date
             if rebalance_dates and rebalance_index < len(rebalance_dates) and date == rebalance_dates[rebalance_index]:
                 # This is a rebalancing date - optimize and rebalance
-                if rebalance_index < len(rebalance_dates) - 1:  # Don't rebalance on the last date
+                # For buy-and-hold (single rebalance date), always rebalance
+                # For multiple dates, don't rebalance on the last date
+                if len(rebalance_dates) == 1 or rebalance_index < len(rebalance_dates) - 1:
                     # Get historical data for optimization (use data up to current date)
                     historical_returns = returns[returns.index <= date]
                     
