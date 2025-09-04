@@ -131,8 +131,20 @@ class Portfolio:
             current_shares = self.positions.get(ticker, 0.0)
             self.positions[ticker] = current_shares + shares
             
-        # Update portfolio value (subtract transaction costs)
-        self.current_capital = self.calculate_portfolio_value() - total_transaction_cost
+        # Apply transaction costs by reducing all positions proportionally
+        if total_transaction_cost > 0:
+            # Calculate the reduction factor to account for transaction costs
+            post_trade_value = self.calculate_portfolio_value()
+            reduction_factor = (post_trade_value - total_transaction_cost) / post_trade_value
+            
+            # Apply the reduction to all positions
+            for ticker in self.positions:
+                self.positions[ticker] *= reduction_factor
+            
+            # Update current capital to reflect the transaction cost impact
+            self.current_capital = self.calculate_portfolio_value()
+        else:
+            self.current_capital = self.calculate_portfolio_value()
         
         # Record transaction
         if trades:
