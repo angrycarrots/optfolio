@@ -87,11 +87,22 @@ def create_sample_data():
     return prices_dir
 
 
-def run_portfolio_analysis():
-    """Run the main portfolio analysis."""
+def run_portfolio_analysis(rebalance_months=3):
+    """Run the main portfolio analysis.
+    
+    Args:
+        rebalance_months (int): Rebalancing period in months. 0 = Buy and Hold (no rebalancing).
+    """
     print("=" * 60)
     print("PORTFOLIO OPTIMIZATION AND BACKTESTING SYSTEM")
     print("=" * 60)
+    
+    # Configuration
+    print(f"\n⚙️  Configuration:")
+    if rebalance_months == 0:
+        print(f"   📌 Rebalancing: Buy and Hold (no rebalancing)")
+    else:
+        print(f"   🔄 Rebalancing: Every {rebalance_months} month{'s' if rebalance_months > 1 else ''}")
     
     # Step 1: Use existing CSV data
     # data_dir = create_sample_data()  # Commented out - using existing data
@@ -188,14 +199,21 @@ def run_portfolio_analysis():
     # Step 5: Run backtests
     print("\n4. Running backtests...")
     
-    # Define rebalancing schedule (every 3 months, 1st week, 1st day)
-    rebalance_freq = {"months": 3, "weeks": 1, "days": 1}
+    # Define rebalancing schedule based on configuration
+    if rebalance_months == 0:
+        # Buy and hold - no rebalancing
+        rebalance_freq = None
+        print(f"   📌 Using Buy and Hold strategy (no rebalancing)")
+    else:
+        # Rebalance every N months
+        rebalance_freq = {"months": rebalance_months, "weeks": 1, "days": 1}
+        print(f"   🔄 Rebalancing every {rebalance_months} month{'s' if rebalance_months > 1 else ''}")
     
     # Run backtests for all strategies
     results = backtester.run_multiple_backtests(
         strategies=strategies,
         rebalance_freq=rebalance_freq,
-        start_date='2017-01-01',  # Start from 2021 to have enough history
+        start_date='2017-01-01',  # Start from 2017 to have enough history
         end_date='2025-06-30'
     )
     
@@ -558,4 +576,15 @@ def run_portfolio_analysis():
 
 
 if __name__ == "__main__":
-    run_portfolio_analysis()
+    # Configuration: Set rebalance period in months
+    # 0 = Buy and Hold (no rebalancing)
+    # 1, 2, 3, 6, 12 = Rebalance every N months
+    rebalance_period = 3  # Default: quarterly rebalancing
+    
+    # Uncomment one of these lines to test different rebalancing strategies:
+    # rebalance_period = 0   # Buy and Hold
+    # rebalance_period = 1   # Monthly rebalancing
+    # rebalance_period = 6   # Semi-annual rebalancing
+    # rebalance_period = 12  # Annual rebalancing
+    
+    run_portfolio_analysis(rebalance_months=rebalance_period)

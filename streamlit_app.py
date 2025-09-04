@@ -80,7 +80,7 @@ def load_data():
         return None, None, None
 
 @st.cache_data
-def run_backtests(prices, returns, _data_loader, start_date, end_date):
+def run_backtests(prices, returns, _data_loader, start_date, end_date, rebalance_months):
     """Run backtests and cache results."""
     try:
         # Create strategies
@@ -117,8 +117,13 @@ def run_backtests(prices, returns, _data_loader, start_date, end_date):
         # Load data into backtester
         backtester.load_data(_data_loader, tickers=prices.columns.tolist())
         
-        # Define rebalancing schedule (every 3 months, 1st week, 1st day)
-        rebalance_freq = {"months": 3, "weeks": 1, "days": 1}
+        # Define rebalancing schedule based on configuration
+        if rebalance_months == 0:
+            # Buy and hold - no rebalancing
+            rebalance_freq = None
+        else:
+            # Rebalance every N months
+            rebalance_freq = {"months": rebalance_months, "weeks": 1, "days": 1}
         
         # Run backtests for all strategies
         results = backtester.run_multiple_backtests(
@@ -366,6 +371,20 @@ def main():
         max_value=pd.to_datetime('2025-12-31').date()
     )
     
+    # Rebalancing configuration
+    st.sidebar.subheader("🔄 Rebalancing")
+    rebalance_months = st.sidebar.selectbox(
+        "Rebalance Period (months)",
+        options=[0, 1, 2, 3, 6, 12],
+        index=2,  # Default to 3 months
+        help="0 = Buy and Hold (no rebalancing), 1-12 = Rebalance every N months"
+    )
+    
+    if rebalance_months == 0:
+        st.sidebar.info("📌 **Buy and Hold Strategy**: No rebalancing will occur")
+    else:
+        st.sidebar.info(f"🔄 **Rebalancing**: Every {rebalance_months} month{'s' if rebalance_months > 1 else ''}")
+    
     # Symbol information
     st.sidebar.subheader("📈 Target Symbols")
     st.sidebar.write(f"**{len(TARGET_SYMBOLS)} symbols selected:**")
@@ -387,7 +406,7 @@ def main():
     
     # Run backtests
     with st.spinner("Running backtests..."):
-        results, strategies = run_backtests(prices, returns, data_loader, str(start_date), str(end_date))
+        results, strategies = run_backtests(prices, returns, data_loader, str(start_date), str(end_date), rebalance_months)
     
     if results is None:
         st.error("Failed to run backtests. Please check the configuration.")
@@ -490,10 +509,12 @@ def main():
     
     # Footer
     st.markdown("---")
+    rebalance_info = "Buy & Hold" if rebalance_months == 0 else f"Every {rebalance_months} month{'s' if rebalance_months > 1 else ''}"
     st.markdown(
         "**Portfolio Optimization Dashboard** | Built with Streamlit and Plotly | "
         f"Data: {len(TARGET_SYMBOLS)} symbols | "
-        f"Period: {start_date} to {end_date}"
+        f"Period: {start_date} to {end_date} | "
+        f"Rebalancing: {rebalance_info}"
     )
 
 if __name__ == "__main__":
