@@ -195,8 +195,8 @@ def run_portfolio_analysis():
     results = backtester.run_multiple_backtests(
         strategies=strategies,
         rebalance_freq=rebalance_freq,
-        start_date='2021-01-01',  # Start from 2021 to have enough history
-        end_date='2023-12-31'
+        start_date='2017-01-01',  # Start from 2021 to have enough history
+        end_date='2025-06-30'
     )
     
     print(f"   Completed backtests for {len(results)} strategies")
@@ -309,6 +309,15 @@ def run_portfolio_analysis():
     # Export detailed strategy results to CSV
     results_df.to_csv('detailed_strategy_results.csv', index=False)
     print("   Exported detailed strategy results to 'detailed_strategy_results.csv'")
+    
+    # Export Black-Litterman upside rebalancing data if available
+    for strategy_name, result in results.items():
+        if 'Black-Litterman (Upside)' in strategy_name:
+            strategy = next(s for s in strategies if s.name == strategy_name)
+            if hasattr(strategy, 'export_rebalancing_data_to_csv'):
+                csv_filename = strategy.export_rebalancing_data_to_csv('black_litterman_upside_rebalancing.csv')
+                if csv_filename:
+                    print(f"   Exported Black-Litterman upside rebalancing data to '{csv_filename}'")
     
     # Export detailed results to JSON
     backtester.export_results('detailed_results.json', format='json')
@@ -511,6 +520,12 @@ def run_portfolio_analysis():
     print(f"  - rolling_metrics.png")
     if len(bl_strategies) >= 2:
         print(f"  - black_litterman_comparison.png")
+    
+    # Check if Black-Litterman upside rebalancing data was exported
+    for strategy_name, result in results.items():
+        if 'Black-Litterman (Upside)' in strategy_name:
+            print(f"  - black_litterman_upside_rebalancing.csv")
+            break
 
 
 if __name__ == "__main__":

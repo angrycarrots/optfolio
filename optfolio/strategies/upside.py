@@ -60,6 +60,9 @@ class UpsideCalculator:
         pricedf = pd.DataFrame(jdata['price_history'])[['date', 'close']]
         pricedf.set_index('date', inplace=True)
         
+        # Convert dates to datetime objects
+        pricedf.index = pd.to_datetime(pricedf.index)
+        
         # Ensure close prices are numeric
         pricedf['close'] = pd.to_numeric(pricedf['close'], errors='coerce')
         
@@ -68,6 +71,9 @@ class UpsideCalculator:
         ddata = X.explode(0)
         df = pd.DataFrame(ddata['ratings'])
         df.set_index('date', inplace=True)
+        
+        # Convert dates to datetime objects
+        df.index = pd.to_datetime(df.index)
         
         # Join price data with price targets
         adf = pricedf.join(df[['pt_now']])

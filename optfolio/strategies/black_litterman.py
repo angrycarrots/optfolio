@@ -32,6 +32,9 @@ class BlackLittermanStrategy(OptimizationStrategy):
         self.risk_aversion = risk_aversion
         self.prior_method = prior_method
         self.view_method = view_method
+        
+        # Initialize rebalancing log for tracking weights and upside data
+        self.rebalancing_log = []
     
     def optimize(self, returns: pd.DataFrame, **kwargs) -> Dict[str, float]:
         """Optimize portfolio weights using Black-Litterman model.
@@ -83,7 +86,129 @@ class BlackLittermanStrategy(OptimizationStrategy):
         if constraints:
             weights = self.apply_constraints(weights, constraints)
         
+        # Log rebalancing data if this is an upside strategy
+        if self.view_method == "upside":
+            self._log_rebalancing_data(returns, weights, **kwargs)
+        
         return weights
+    
+    def _log_rebalancing_data(self, returns: pd.DataFrame, weights: Dict[str, float], **kwargs):
+        """Log rebalancing data including weights and upside values for CSV export.
+        
+        Args:
+            returns: Returns DataFrame used for optimization
+            weights: Optimized portfolio weights
+            **kwargs: Additional parameters
+        """
+        if self.view_method != "upside":
+            return
+            
+        try:
+            # Get current date (use the last date in returns data)
+            current_date = returns.index[-1] if not returns.empty else pd.Timestamp.now()
+            
+            # Get upside data for all symbols
+            uc = UpsideCalculator()
+            upside_data = {}
+            
+            for symbol in returns.columns:
+                try:
+                    symbol_upside = uc.upside(symbol)
+                    if not symbol_upside.empty:
+                        # Get upside value at the specific rebalancing date
+                        # Find the closest date that's <= current_date
+                        available_dates = symbol_upside.index
+                        valid_dates = available_dates[available_dates <= current_date]
+                        
+                        if len(valid_dates) > 0:
+                            # Get the most recent available date <= current_date
+                            target_date = valid_dates[-1]
+                            date_upside = symbol_upside.loc[target_date]['upside']
+                            
+                            # Handle case where multiple entries exist for the same date
+                            if isinstance(date_upside, pd.Series):
+                                # Take the last (most recent) value if multiple entries
+                                date_upside = date_upside.iloc[-1]
+                            
+                            # Ensure we have a single numeric value
+                            if pd.isna(date_upside) or not np.isfinite(date_upside):
+                                upside_data[symbol] = np.nan
+                            else:
+                                upside_data[symbol] = float(date_upside)
+                        else:
+                            # No data available at or before current_date
+                            upside_data[symbol] = np.nan
+                    else:
+                        upside_data[symbol] = np.nan
+                except Exception as e:
+                    upside_data[symbol] = np.nan
+            
+            # Create log entry
+            log_entry = {
+                'date': current_date,
+                'weights': weights.copy(),
+                'upside_values': upside_data.copy()
+            }
+            
+            self.rebalancing_log.append(log_entry)
+            
+        except Exception as e:
+            print(f"Warning: Could not log rebalancing data: {e}")
+    
+    def get_rebalancing_log(self) -> List[Dict]:
+        """Get the rebalancing log for CSV export.
+        
+        Returns:
+            List of rebalancing log entries
+        """
+        return self.rebalancing_log
+    
+    def export_rebalancing_data_to_csv(self, filename: str = None) -> str:
+        """Export rebalancing data to CSV file.
+        
+        Args:
+            filename: Output filename (default: auto-generated)
+            
+        Returns:
+            Filename of the exported CSV file
+        """
+        if not self.rebalancing_log:
+            print("Warning: No rebalancing data to export")
+            return None
+            
+        if filename is None:
+            timestamp = pd.Timestamp.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"black_litterman_upside_rebalancing_{timestamp}.csv"
+        
+        try:
+            # Prepare data for CSV export
+            csv_data = []
+            
+            for log_entry in self.rebalancing_log:
+                date = log_entry['date']
+                weights = log_entry['weights']
+                upside_values = log_entry['upside_values']
+                
+                # Create row for each symbol
+                for symbol in weights.keys():
+                    row = {
+                        'Date': date,
+                        'Symbol': symbol,
+                        'Weight': weights[symbol],
+                        'Upside': upside_values.get(symbol, np.nan)
+                    }
+                    csv_data.append(row)
+            
+            # Create DataFrame and export
+            df = pd.DataFrame(csv_data)
+            df.to_csv(filename, index=False)
+            
+            print(f"Exported rebalancing data to: {filename}")
+            return filename
+            
+        except Exception as e:
+            print(f"Error exporting rebalancing data: {e}")
+            return None
     
     def _calculate_equilibrium_returns(self, returns: pd.DataFrame) -> pd.Series:
         """Calculate market equilibrium returns.
