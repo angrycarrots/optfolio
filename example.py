@@ -323,6 +323,23 @@ def run_portfolio_analysis():
     backtester.export_results('detailed_results.json', format='json')
     print("   Exported detailed results to 'detailed_results.json'")
     
+    # Export portfolio values over time to CSV
+    portfolio_values_data = []
+    for strategy_name, result in results.items():
+        if 'portfolio_values' in result and len(result['portfolio_values']) > 0:
+            portfolio_series = result['portfolio_values']
+            for date, value in portfolio_series.items():
+                portfolio_values_data.append({
+                    'Date': date,
+                    'Strategy': strategy_name,
+                    'Portfolio_Value': value
+                })
+    
+    if portfolio_values_data:
+        portfolio_values_df = pd.DataFrame(portfolio_values_data)
+        portfolio_values_df.to_csv('portfolio_values_over_time.csv', index=False)
+        print("   Exported portfolio values over time to 'portfolio_values_over_time.csv'")
+    
     # Step 9: Generate visualizations
     print("\n8. Generating visualizations...")
     
@@ -515,6 +532,7 @@ def run_portfolio_analysis():
     print(f"\nGenerated files:")
     print(f"  - strategy_comparison.csv")
     print(f"  - detailed_strategy_results.csv")
+    print(f"  - portfolio_values_over_time.csv")
     print(f"  - detailed_results.json")
     print(f"  - portfolio_values.png")
     print(f"  - rolling_metrics.png")
