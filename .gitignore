@@ -53,13 +53,6 @@ docs/_build/
 
 # Project specific
 prices/
-*.csv
-*.json
-*.png
-*.jpg
-*.jpeg
-*.pdf
-results/
 output/
 temp/
 tmp/

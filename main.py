@@ -114,7 +114,7 @@ Examples:
     # Handle sample data generation
     if args.sample_data:
         print("Generating sample data...")
-        from example import create_sample_data
+        from examples.example import create_sample_data
         data_dir = create_sample_data()
     else:
         data_dir = Path(args.data_dir)

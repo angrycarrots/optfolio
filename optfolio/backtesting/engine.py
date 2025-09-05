@@ -4,7 +4,6 @@ from typing import Dict, List, Optional, Any, Union
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
-import vectorbt as vbt
 from scipy import stats
 
 from ..portfolio.base import Portfolio

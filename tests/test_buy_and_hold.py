@@ -99,7 +99,9 @@ def test_buy_and_hold():
         else:
             print(f"  ❌ Quarterly should have more transactions than buy-and-hold")
     
-    return results_buy_hold, results_quarterly
+    # Test completed successfully
+    assert results_buy_hold is not None
+    assert results_quarterly is not None
 
 if __name__ == "__main__":
     test_buy_and_hold()

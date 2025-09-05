@@ -6,7 +6,6 @@ from typing import Dict, List, Optional, Union
 
 import pandas as pd
 import numpy as np
-from tqdm import tqdm
 
 
 class DataLoader:
@@ -53,7 +52,7 @@ class DataLoader:
         
         # Load each CSV file
         price_data = {}
-        for csv_file in tqdm(csv_files, desc="Loading price data"):
+        for csv_file in csv_files:
             ticker = csv_file.stem
             try:
                 df = pd.read_csv(csv_file)
