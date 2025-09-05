@@ -283,6 +283,7 @@ class Portfolio:
             'current_weights': self.weights.copy(),
             'current_positions': self.positions.copy(),
             'num_transactions': sum(len(t['trades']) for t in self.transaction_history),
+            'num_rebalances': len(self.transaction_history),
             'total_transaction_costs': sum(t['transaction_cost'] for t in self.transaction_history),
             'data_points': len(self.portfolio_values)
         }
