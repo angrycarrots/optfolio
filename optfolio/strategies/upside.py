@@ -17,9 +17,7 @@ class UpsideCalculator:
         self.datadir = Path(datadir)
         
     def upside(self, symbol: str) -> pd.DataFrame:
-        """Calculate the analyst price target upside for a given symbol as a function of date.
-        
-        The upside can then be used as a Black-Litterman view.
+        """Read the upside data for a given symbol from a CSV file.
         
         Args:
             symbol: The symbol of the stock to calculate the upside for
