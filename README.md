@@ -1,6 +1,6 @@
 # Portfolio Optimization and Backtesting System
 
-A comprehensive Python system for portfolio optimization, backtesting, and performance analysis using multiple optimization strategies.
+A comprehensive Python system for portfolio optimization, backtesting, and performance analysis using multiple optimization strategies.  Portfolio optimization is incorporated as a strategy during rebalancing.
 
 ## Features
 
@@ -13,6 +13,9 @@ A comprehensive Python system for portfolio optimization, backtesting, and perfo
 - **Export Capabilities**: Results export to CSV, Excel, and JSON formats
 - **Stock Basket Management**: Create, manage, and analyze collections of stocks/ETFs
 - **Interactive Dashboard**: Multi-page Streamlit interface with basket configuration
+
+### Limitations
+- Survivor bias - does not easily have the capability of backtest universe selection (coming soon)
 
 ## Installation
 
@@ -81,6 +84,9 @@ This will:
 python main.py --data-dir ./data/price --strategies equal_weight mean_variance
 ```
 
+### Sample Jupyter notebook
+- Example backtest and portfolio optimization strategy pipeline
+
 ## Data Format
 
 ### Price Data Files
@@ -95,21 +101,34 @@ date,close
 ...
 ```
 
-### Supported Sector ETFs
+### Upside Data Files
 
-The system is designed to work with the following sector ETFs:
+The system supports upside analysis data stored in CSV format in the `data/upside/` directory. These files contain analyst price targets and calculated upside potential for each security.
 
-- **Energy**: XLE, XOP, IYE, OIH
-- **Financials**: XLF, KBE, KRE
-- **Utilities**: XLU
-- **Industrials**: XLI, XME
-- **Technology**: XLK, SMH, XTL
-- **Healthcare**: XLV, IBB
-- **Consumer Discretionary**: XLY, XRT
-- **Consumer Staples**: XLP
-- **Materials**: XLB
-- **Real Estate**: IYR, XHB, ITB, VNQ
-- **Mining**: GDX, GDXJ
+#### File Structure
+
+Each ticker should have a CSV file named `{TICKER}.csv` in the `data/upside/` directory with the following structure:
+
+```csv
+close,price_target,upside
+61.28,66.0,0.07702349869451695
+60.42,72.0,0.19165839126117176
+58.11,50.0,-0.13956289795215968
+64.22,70.0,0.09000311429461229
+...
+```
+
+#### Column Descriptions
+
+- **close**: Current closing price of the security
+- **price_target**: Analyst price target for the security
+- **upside**: Calculated upside potential as a decimal (e.g., 0.077 = 7.7% upside)
+
+#### Usage
+
+Upside data is used by the Black-Litterman strategy to incorporate analyst views and price targets into portfolio optimization. The system automatically loads upside data when available and uses it to generate more informed portfolio allocations.
+
+
 
 ## Stock Basket Management
 
