@@ -11,6 +11,8 @@ A comprehensive Python system for portfolio optimization, backtesting, and perfo
 - **Transaction Costs**: Realistic transaction cost modeling
 - **Visualization**: Portfolio performance charts and rolling metrics
 - **Export Capabilities**: Results export to CSV, Excel, and JSON formats
+- **Stock Basket Management**: Create, manage, and analyze collections of stocks/ETFs
+- **Interactive Dashboard**: Multi-page Streamlit interface with basket configuration
 
 ## Installation
 
@@ -41,9 +43,21 @@ source .venv/bin/activate  # On Unix/macOS
 
 ## Quick Start
 
+### Interactive Dashboard (Recommended)
+
+The easiest way to get started is with the interactive Streamlit dashboard:
+
+```bash
+streamlit run streamlit_app.py
+```
+
+This will launch a multi-page web interface with:
+- **Dashboard**: Main portfolio analysis and backtesting
+- **Stock Baskets**: Create and manage collections of stocks/ETFs
+
 ### Run with Sample Data
 
-The easiest way to get started is to run the system with sample data:
+You can also run the system with sample data from the command line:
 
 ```bash
 python main.py --sample-data
@@ -58,13 +72,13 @@ This will:
 ### Run with Your Own Data
 
 1. Prepare your data in CSV format:
-   - Create a `prices` directory
+   - Create a `data/price` directory
    - Add CSV files named `{TICKER}.csv` (e.g., `AAPL.csv`, `GOOGL.csv`)
    - Each CSV should have columns: `date`, `close`
 
 2. Run the analysis:
 ```bash
-python main.py --data-dir ./prices --strategies equal_weight mean_variance
+python main.py --data-dir ./data/price --strategies equal_weight mean_variance
 ```
 
 ## Data Format
@@ -96,6 +110,166 @@ The system is designed to work with the following sector ETFs:
 - **Materials**: XLB
 - **Real Estate**: IYR, XHB, ITB, VNQ
 - **Mining**: GDX, GDXJ
+
+## Stock Basket Management
+
+The system includes a powerful stock basket management feature that allows you to create, organize, and analyze collections of stocks and ETFs.
+
+### What are Stock Baskets?
+
+A stock basket is a named collection of stocks or ETFs that you can use for portfolio analysis. Baskets help you:
+- Organize related securities (e.g., "Tech Stocks", "Dividend Stocks")
+- Quickly switch between different investment themes
+- Compare performance across different asset groups
+- Share and reuse common portfolio configurations
+
+### Creating and Managing Baskets
+
+#### Using the Interactive Dashboard
+
+1. **Navigate to Stock Baskets**: Click on "Stock Baskets" in the sidebar or page selector
+2. **Create New Basket**: 
+   - Click "Create New Basket" tab
+   - Enter basket name and description
+   - Select symbols from available data
+   - Add optional tags for categorization
+   - Click "Create Basket"
+
+3. **Manage Existing Baskets**:
+   - View all baskets in the "Manage Baskets" tab
+   - Edit basket details, symbols, or tags
+   - Delete unwanted baskets
+   - Search and filter baskets by name or tags
+
+#### Using the API
+
+```python
+from optfolio.data.basket_manager import StockBasketManager
+
+# Initialize basket manager
+basket_manager = StockBasketManager("data")
+
+# Create a new basket
+basket_id = basket_manager.create_basket(
+    name="Tech Stocks",
+    symbols=["AAPL", "GOOGL", "MSFT", "AMZN"],
+    description="Major technology companies",
+    tags=["tech", "large-cap"]
+)
+
+# Get basket information
+basket = basket_manager.get_basket(basket_id)
+print(f"Basket: {basket['name']}")
+print(f"Symbols: {basket['symbols']}")
+
+# Update basket
+basket_manager.update_basket(
+    basket_id,
+    symbols=["AAPL", "GOOGL", "MSFT", "AMZN", "META"],
+    tags=["tech", "large-cap", "faang"]
+)
+
+# Get all baskets
+all_baskets = basket_manager.get_all_baskets()
+for basket_id, basket in all_baskets.items():
+    print(f"{basket['name']}: {len(basket['symbols'])} symbols")
+```
+
+### Using Baskets in Analysis
+
+#### In the Dashboard
+
+1. **Select Basket**: In the Dashboard page, use the "Stock Basket" selector in the sidebar
+2. **Run Analysis**: The system will automatically load data for all symbols in the selected basket
+3. **Compare Baskets**: Switch between different baskets to compare performance
+
+#### In Code
+
+```python
+from optfolio.data.loader import DataLoader
+
+# Initialize data loader
+data_loader = DataLoader("data/price")
+
+# Load data from a specific basket
+prices = data_loader.load_prices_from_basket(basket_id)
+
+# Get basket information
+basket_info = data_loader.get_basket_info(basket_id)
+print(f"Analyzing basket: {basket_info['name']}")
+print(f"Symbols: {basket_info['symbols']}")
+
+# Run backtesting with basket data
+from optfolio.backtesting.engine import Backtester
+from optfolio.strategies.base import StrategyFactory
+
+backtester = Backtester(initial_capital=100000)
+backtester.load_data(data_loader, tickers=prices.columns.tolist())
+
+strategy = StrategyFactory.create('equal_weight')
+results = backtester.run_backtest(strategy)
+```
+
+### Default Baskets
+
+The system comes with several pre-configured baskets:
+
+- **S&P 500 Tech**: Major technology stocks (AAPL, MSFT, GOOGL, AMZN, META, NVDA, TSLA)
+- **Sector ETFs**: Sector SPDR ETFs for broad market exposure
+- **Financial Services**: Major banks and financial companies
+- **Healthcare & Biotech**: Healthcare and biotechnology companies
+
+To create default baskets, click "Create Default Baskets" in the Stock Baskets page sidebar.
+
+### Import/Export Baskets
+
+#### Export Baskets
+
+```python
+# Export as JSON
+json_data = basket_manager.export_basket(basket_id, "json")
+
+# Export as CSV
+csv_data = basket_manager.export_basket(basket_id, "csv")
+```
+
+#### Import Baskets
+
+```python
+# Import from JSON
+basket_data = {
+    "name": "My Custom Basket",
+    "symbols": ["AAPL", "GOOGL", "MSFT"],
+    "description": "Custom technology portfolio",
+    "tags": ["custom", "tech"]
+}
+basket_id = basket_manager.import_basket(basket_data, "json")
+
+# Import from CSV
+csv_data = "symbol,basket_name\nAAPL,My Basket\nGOOGL,My Basket\nMSFT,My Basket"
+basket_id = basket_manager.import_basket(csv_data, "csv")
+```
+
+### Basket Statistics
+
+The system provides comprehensive statistics about your baskets:
+
+```python
+stats = basket_manager.get_basket_stats()
+print(f"Total baskets: {stats['total_baskets']}")
+print(f"Total symbols: {stats['total_symbols']}")
+print(f"Unique symbols: {stats['unique_symbols']}")
+print(f"Average symbols per basket: {stats['avg_symbols_per_basket']:.1f}")
+print("Most common symbols:", stats['most_common_symbols'])
+```
+
+### Best Practices
+
+1. **Naming Convention**: Use descriptive names like "Tech Large-Cap" or "Dividend Aristocrats"
+2. **Tagging**: Add relevant tags for easy filtering and organization
+3. **Symbol Validation**: The system automatically validates symbols against available data
+4. **Regular Updates**: Keep baskets updated as your investment strategy evolves
+5. **Documentation**: Use descriptions to explain the rationale behind each basket
 
 ## Optimization Strategies
 
@@ -270,6 +444,13 @@ pytest --cov=optfolio
 # Run specific test modules
 pytest optfolio/tests/test_data.py
 pytest optfolio/tests/test_strategies.py
+
+# Run basket-specific tests
+pytest optfolio/tests/test_basket_manager.py
+pytest optfolio/tests/test_basket_integration.py
+
+# Run all basket tests
+pytest optfolio/tests/test_basket*.py
 ```
 
 ## Project Structure
@@ -277,8 +458,9 @@ pytest optfolio/tests/test_strategies.py
 ```
 optfolio/
 ├── data/                   # Data loading and validation
-│   ├── loader.py          # CSV data loader
-│   └── validator.py       # Data validation
+│   ├── loader.py          # CSV data loader with basket support
+│   ├── validator.py       # Data validation
+│   └── basket_manager.py  # Stock basket management
 ├── portfolio/             # Portfolio management
 │   ├── base.py           # Portfolio class
 │   └── metrics.py        # Performance metrics
@@ -292,8 +474,17 @@ optfolio/
 │   └── engine.py       # Main backtester
 ├── analysis/           # Analysis and visualization
 ├── tests/             # Test suite
+│   ├── test_basket_manager.py    # Basket manager tests
+│   └── test_basket_integration.py # Basket integration tests
 ├── cli/               # Command line interface
-└── config/            # Configuration management
+├── config/            # Configuration management
+├── pages/             # Streamlit multi-page app
+│   ├── dashboard.py   # Main portfolio dashboard
+│   └── stock_baskets.py # Basket configuration page
+├── streamlit_app.py   # Main Streamlit entry point
+└── data/              # Data directory
+    ├── price/         # CSV price data files
+    └── stock_baskets.json # Basket storage
 ```
 
 ## Configuration

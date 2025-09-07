@@ -7,6 +7,8 @@ from typing import Dict, List, Optional, Union
 import pandas as pd
 import numpy as np
 
+from .basket_manager import StockBasketManager
+
 
 class DataLoader:
     """Load and preprocess financial data from CSV files."""
@@ -20,6 +22,10 @@ class DataLoader:
         self.data_dir = Path(data_dir)
         self._price_data: Optional[pd.DataFrame] = None
         self._returns_data: Optional[pd.DataFrame] = None
+        
+        # Initialize basket manager if data directory contains basket data
+        basket_data_dir = self.data_dir.parent if self.data_dir.name == "price" else self.data_dir
+        self.basket_manager = StockBasketManager(basket_data_dir)
         
     def load_prices(self, tickers: Optional[List[str]] = None) -> pd.DataFrame:
         """Load price data for specified tickers.
@@ -170,3 +176,52 @@ class DataLoader:
         }
         
         return info
+    
+    def load_prices_from_basket(self, basket_id: str) -> pd.DataFrame:
+        """Load price data for symbols in a specific basket.
+        
+        Args:
+            basket_id: Basket identifier
+            
+        Returns:
+            DataFrame with price data for basket symbols
+            
+        Raises:
+            ValueError: If basket not found or no valid symbols
+        """
+        basket = self.basket_manager.get_basket(basket_id)
+        if not basket:
+            raise ValueError(f"Basket {basket_id} not found")
+        
+        symbols = basket.get("symbols", [])
+        if not symbols:
+            raise ValueError(f"Basket {basket_id} contains no symbols")
+        
+        return self.load_prices(tickers=symbols)
+    
+    def get_basket_info(self, basket_id: str) -> Optional[Dict]:
+        """Get information about a specific basket.
+        
+        Args:
+            basket_id: Basket identifier
+            
+        Returns:
+            Basket information or None if not found
+        """
+        return self.basket_manager.get_basket(basket_id)
+    
+    def get_all_baskets(self) -> Dict[str, Dict]:
+        """Get all available baskets.
+        
+        Returns:
+            Dictionary of all baskets
+        """
+        return self.basket_manager.get_all_baskets()
+    
+    def get_basket_stats(self) -> Dict:
+        """Get statistics about all baskets.
+        
+        Returns:
+            Dictionary with basket statistics
+        """
+        return self.basket_manager.get_basket_stats()
