@@ -258,7 +258,7 @@ class Backtester:
                         new_weights = strategy.optimize(historical_returns, prices=historical_prices, **kwargs)
                         
                         # Rebalance portfolio
-                        portfolio.rebalance(new_weights, current_prices)
+                        portfolio.rebalance(new_weights, current_prices, transaction_date=date)
                 
                 rebalance_index += 1
         

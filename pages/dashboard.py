@@ -283,6 +283,115 @@ def plot_all_strategies_comparison(results):
     
     return fig
 
+def create_weights_table(results, selected_strategy):
+    """Create a table showing the most recent weights for the selected strategy."""
+    if not results or selected_strategy not in results:
+        return None
+    
+    result = results[selected_strategy]
+    last_weights = result.get('last_weights', {})
+    
+    if not last_weights:
+        return None
+    
+    # Sort weights by value (descending)
+    sorted_weights = sorted(last_weights.items(), key=lambda x: x[1], reverse=True)
+    
+    # Create DataFrame with Symbol and Weight columns
+    weights_data = []
+    for symbol, weight in sorted_weights:
+        weights_data.append({
+            'Symbol': symbol,
+            'Weight': f"{weight:.1%}"
+        })
+    
+    df = pd.DataFrame(weights_data)
+    return df
+
+def create_transactions_table(results, selected_strategy, prices_df=None):
+    """Create a table showing all transactions for the selected strategy."""
+    if not results or selected_strategy not in results:
+        return None
+    
+    result = results[selected_strategy]
+    transaction_history = result.get('transaction_history', [])
+    
+    if not transaction_history:
+        return None
+    
+    # Flatten transaction history into individual trades
+    transactions_data = []
+    
+    for transaction in transaction_history:
+        date = transaction.get('date', '')
+        trades = transaction.get('trades', {})
+        transaction_cost = transaction.get('transaction_cost', 0)
+        portfolio_value = transaction.get('portfolio_value', 0)
+        
+        # Convert date to string if it's a datetime object
+        if hasattr(date, 'strftime'):
+            date_str = date.strftime('%Y-%m-%d %H:%M:%S')
+            # Also create a datetime object for price lookup
+            date_dt = date
+        else:
+            date_str = str(date)
+            try:
+                date_dt = pd.to_datetime(date)
+            except:
+                date_dt = None
+        
+        # Create a row for each trade in this transaction
+        for symbol, shares in trades.items():
+            # Try to get price for this symbol and date
+            price = None
+            transaction_value = None
+            
+            if prices_df is not None and date_dt is not None and symbol in prices_df.columns:
+                try:
+                    # Find the closest date in the price data
+                    price_series = prices_df[symbol]
+                    # Get price on or before the transaction date
+                    available_dates = price_series.index[price_series.index <= date_dt]
+                    if len(available_dates) > 0:
+                        closest_date = available_dates[-1]  # Most recent date
+                        price = price_series.loc[closest_date]
+                        transaction_value = shares * price
+                    else:
+                        # If no price available on or before transaction date, try to get the next available price
+                        future_dates = price_series.index[price_series.index > date_dt]
+                        if len(future_dates) > 0:
+                            closest_date = future_dates[0]  # Next available date
+                            price = price_series.loc[closest_date]
+                            transaction_value = shares * price
+                        else:
+                            price = None
+                            transaction_value = None
+                except Exception as e:
+                    # Log the error for debugging but don't crash
+                    st.warning(f"Error getting price for {symbol} on {date_dt}: {e}")
+                    price = None
+                    transaction_value = None
+            
+            transactions_data.append({
+                'Date': date_str,
+                'Symbol': symbol,
+                'Shares': f"{shares:.2f}",
+                'Price': f"${price:.2f}" if price is not None else "N/A",
+                'Transaction Value': f"${transaction_value:,.2f}" if transaction_value is not None else "N/A",
+                'Portfolio Value': f"${portfolio_value:,.2f}"
+            })
+    
+    if not transactions_data:
+        return None
+    
+    # Create DataFrame
+    df = pd.DataFrame(transactions_data)
+    
+    # Sort by date (most recent first)
+    df = df.sort_values('Date', ascending=False)
+    
+    return df
+
 def main():
     """Main function for the dashboard page."""
     
@@ -459,12 +568,63 @@ def main():
                 delta=f"{summary.get('num_transactions', 0)} trades"
             )
     
-    # Portfolio value over time
-    portfolio_fig = plot_portfolio_values(results, selected_strategy)
-    if portfolio_fig:
-        st.plotly_chart(portfolio_fig, width='stretch')
+    # Portfolio value over time and weights side by side
+    st.header("📊 Portfolio Analysis")
+    
+    # Create two columns: 1/3 for weights table, 2/3 for portfolio value chart
+    col1, col2 = st.columns([1, 2])
+    
+    with col1:
+        st.subheader("⚖️ Portfolio Weights")
+        st.markdown(f"Current allocation weights for **{selected_strategy}** as of the most recent rebalancing date.")
+        
+        weights_df = create_weights_table(results, selected_strategy)
+        if weights_df is not None and not weights_df.empty:
+            st.markdown('<div class="strategy-comparison">', unsafe_allow_html=True)
+            st.dataframe(
+                weights_df,
+                width='stretch',
+                hide_index=True,
+                use_container_width=True
+            )
+            st.markdown('</div>', unsafe_allow_html=True)
+            
+            # Download button for CSV
+            csv_data = weights_df.to_csv(index=False)
+            st.download_button(
+                label="📥 Download Portfolio Weights as CSV",
+                data=csv_data,
+                file_name=f"portfolio_weights_{selected_strategy.replace(' ', '_').lower()}.csv",
+                mime="text/csv",
+                help="Download the current portfolio weights table as a CSV file"
+            )
+        else:
+            st.warning("Portfolio weights data not available for the selected strategy.")
+    
+    with col2:
+        st.subheader("📈 Portfolio Value Over Time")
+        portfolio_fig = plot_portfolio_values(results, selected_strategy)
+        if portfolio_fig:
+            st.plotly_chart(portfolio_fig, width='stretch')
+        else:
+            st.warning("Portfolio value data not available for the selected strategy.")
+    
+    # Transactions table
+    st.header("📋 Transaction History")
+    st.markdown(f"All transactions executed for **{selected_strategy}** during the backtest period.")
+    
+    transactions_df = create_transactions_table(results, selected_strategy, prices)
+    if transactions_df is not None and not transactions_df.empty:
+        st.markdown('<div class="strategy-comparison">', unsafe_allow_html=True)
+        st.dataframe(
+            transactions_df,
+            width='stretch',
+            hide_index=True,
+            use_container_width=True
+        )
+        st.markdown('</div>', unsafe_allow_html=True)
     else:
-        st.warning("Portfolio value data not available for the selected strategy.")
+        st.warning("Transaction history not available for the selected strategy.")
     
     # Footer
     st.markdown("---")

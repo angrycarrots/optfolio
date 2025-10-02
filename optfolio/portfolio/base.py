@@ -87,12 +87,14 @@ class Portfolio:
         return total_value
     
     def rebalance(self, target_weights: Dict[str, float], 
-                 current_prices: Dict[str, float]) -> Dict[str, float]:
+                 current_prices: Dict[str, float], 
+                 transaction_date: Optional[datetime] = None) -> Dict[str, float]:
         """Rebalance portfolio to target weights.
         
         Args:
             target_weights: Target weights for each asset
             current_prices: Current prices for each asset
+            transaction_date: Date of the transaction (defaults to current time)
             
         Returns:
             Dictionary of trades executed (ticker: shares)
@@ -147,8 +149,10 @@ class Portfolio:
         
         # Record transaction
         if trades:
+            # Use provided transaction date or current time as fallback
+            tx_date = transaction_date if transaction_date is not None else datetime.now()
             self.transaction_history.append({
-                'date': datetime.now(),
+                'date': tx_date,
                 'trades': trades.copy(),
                 'transaction_cost': total_transaction_cost,
                 'portfolio_value': self.current_capital
